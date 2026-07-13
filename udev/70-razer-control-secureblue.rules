@@ -1,0 +1,3 @@
+# Razer Blade 14 (2023).  Give the active local session an ACL through logind.
+# Do not add MODE="0666": arbitrary local users must not be able to write EC HID reports.
+KERNEL=="hidraw*", ATTRS{idVendor}=="1532", ATTRS{idProduct}=="029d", TAG+="uaccess"

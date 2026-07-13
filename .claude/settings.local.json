@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(cargo test 2>&1)",
+      "WebFetch(domain:github.com)",
+      "PowerShell(curl.exe -sSL https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-2.0-only.txt -o C:\\\\Repositories\\\\Razer-Control-Secureblue\\\\LICENSE && \\(Get-Item C:\\\\Repositories\\\\Razer-Control-Secureblue\\\\LICENSE\\).Length && Get-Content C:\\\\Repositories\\\\Razer-Control-Secureblue\\\\LICENSE -TotalCount 5)"
+    ]
+  }
+}
