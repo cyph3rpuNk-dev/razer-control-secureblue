@@ -1,0 +1,12 @@
+# Socket-activated per-user IPC endpoint.  systemd creates the runtime
+# directory and socket with private permissions; the daemon never touches /tmp.
+[Unit]
+Description=Razer Control Secureblue daemon socket
+
+[Socket]
+ListenStream=%t/razer-control/daemon.sock
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target

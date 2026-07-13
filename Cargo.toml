@@ -13,5 +13,9 @@ path = "src/lib.rs"
 name = "razer-control"
 path = "src/main.rs"
 
+[target.'cfg(unix)'.dependencies]
+listenfd = "1"
+signal-hook = "0.3"
+
 [lints.rust]
 unsafe_code = "forbid"

@@ -37,6 +37,44 @@ cargo run -- udev-rule
 
 `boost` and `gpu-tdp` are intentionally rejected unless `--experimental` is supplied. A valid policy decision is not yet a hardware write.
 
+## Daemon (dry-run skeleton)
+
+`razer-control daemon` is a per-user, socket-activated daemon. It validates
+every request against the capability table and hands accepted operations to a
+**dry-run backend that only logs** — no HID command is sent in this release.
+The transport and failsafe behaviour are real:
+
+- systemd socket activation on `%t/razer-control/daemon.sock` (0600 socket in
+  a 0700 directory); a manual fallback uses `$XDG_RUNTIME_DIR` and refuses to
+  start without it — never `/tmp`;
+- on SIGTERM/SIGINT the daemon reverts manual fan control to automatic before
+  exiting, so a logout or crash of the session can never strand the EC in a
+  fixed-RPM state unsupervised.
+
+Test it on a Linux session:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/razer-control.{socket,service} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now razer-control.socket
+
+razer-control ctl status
+razer-control ctl fan manual 3000
+razer-control ctl fan auto
+```
+
 ## Atomic/Secureblue packaging direction
 
 This project will ship a signed RPM and an OCI/custom-image recipe. A host service is necessary because the laptop controller is a local HID device; a Flatpak alone cannot safely provide this feature.
+
+The planned tiers: a COPR-built signed RPM as the source of truth, a
+documented `rpm-ostree install` layering path, and a BlueBuild/custom-image
+module so image-based users never layer at all. CI builds the RPM in a Fedora
+container ([packaging/razer-control-secureblue.spec](packaging/razer-control-secureblue.spec)),
+installs it, and asserts that the udev rule and user units land in the right
+paths with no world-writable device access.
+
+Secureblue note: the Blade's EC is an internal USB HID device present at
+boot, so a USBGuard policy generated on the machine covers it. If you have
+tightened your USBGuard policy by hand, allow `1532:029d` explicitly.

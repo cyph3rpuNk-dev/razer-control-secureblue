@@ -1,0 +1,23 @@
+[Unit]
+Description=Razer Control Secureblue daemon (dry-run skeleton)
+Requires=razer-control.socket
+After=razer-control.socket
+
+[Service]
+ExecStart=/usr/bin/razer-control daemon
+# The daemon reverts manual fan control to automatic on SIGTERM before
+# exiting; TimeoutStopSec bounds how long systemd waits for that failsafe.
+TimeoutStopSec=10
+
+# Hardening.  Directives that need privileges or break hidraw access in a
+# user unit are deliberately absent; revisit when the hardware backend lands.
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+MemoryDenyWriteExecute=yes
+ProtectClock=yes
+ProtectKernelLogs=yes
+CapabilityBoundingSet=
+UMask=0077

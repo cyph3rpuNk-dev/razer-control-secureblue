@@ -1,12 +1,12 @@
 use std::{env, process::ExitCode};
 
 use razer_control_secureblue::{
-    DeviceId, FanMode, RequestedOperation, blade_14_2023_udev_rule, find_device, validate_operation,
+    DeviceId, blade_14_2023_udev_rule, find_device, ipc, validate_operation,
 };
 
 fn usage() {
     eprintln!(
-        "Usage:\n  razer-control device <vendor-hex> <product-hex>\n  razer-control validate fan auto\n  razer-control validate fan manual <rpm>\n  razer-control validate bho <50-80>\n  razer-control validate boost [--experimental]\n  razer-control validate gpu-tdp <watts> [--experimental]\n  razer-control udev-rule"
+        "Usage:\n  razer-control device <vendor-hex> <product-hex>\n  razer-control validate fan auto\n  razer-control validate fan manual <rpm>\n  razer-control validate bho <50-80>\n  razer-control validate boost [--experimental]\n  razer-control validate gpu-tdp <watts> [--experimental]\n  razer-control daemon [--experimental]\n  razer-control ctl <request...>   (e.g. ctl fan manual 3000, ctl status)\n  razer-control udev-rule"
     );
 }
 
@@ -32,6 +32,27 @@ fn current_supported_device() -> DeviceId {
     }
 }
 
+#[cfg(unix)]
+fn run_daemon(experimental: bool) -> Result<String, String> {
+    razer_control_secureblue::daemon_unix::run(experimental)
+        .map(|()| "daemon exited cleanly".to_owned())
+}
+
+#[cfg(not(unix))]
+fn run_daemon(_experimental: bool) -> Result<String, String> {
+    Err("the daemon requires Linux (hidraw and systemd)".to_owned())
+}
+
+#[cfg(unix)]
+fn send_to_daemon(command: &str) -> Result<String, String> {
+    razer_control_secureblue::daemon_unix::send(command)
+}
+
+#[cfg(not(unix))]
+fn send_to_daemon(_command: &str) -> Result<String, String> {
+    Err("the daemon client requires Linux".to_owned())
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let result = match args.as_slice() {
@@ -51,37 +72,26 @@ fn main() -> ExitCode {
             })
         }
         [command] if command == "udev-rule" => Ok(blade_14_2023_udev_rule().to_owned()),
-        [command, feature, rest @ ..] if command == "validate" => {
+        [command, rest @ ..] if command == "validate" && !rest.is_empty() => {
             let experimental = rest.iter().any(|argument| argument == "--experimental");
-            let operation = match (feature.as_str(), rest) {
-                ("fan", [mode]) if mode == "auto" => Ok(RequestedOperation::Fan(FanMode::Auto)),
-                ("fan", [mode, rpm]) if mode == "manual" => rpm
-                    .parse::<u16>()
-                    .map(FanMode::Manual)
-                    .map(RequestedOperation::Fan)
-                    .map_err(|_| "fan RPM must be an integer".to_owned()),
-                ("bho", [limit]) => limit
-                    .parse::<u8>()
-                    .map(RequestedOperation::BatteryHealthLimit)
-                    .map_err(|_| "battery health limit must be an integer".to_owned()),
-                ("boost", []) => Ok(RequestedOperation::Boost),
-                ("boost", [flag]) if flag == "--experimental" => Ok(RequestedOperation::Boost),
-                ("gpu-tdp", [watts]) => watts
-                    .parse::<u16>()
-                    .map(RequestedOperation::GpuTdpWatts)
-                    .map_err(|_| "GPU TDP must be an integer".to_owned()),
-                ("gpu-tdp", [watts, flag]) if flag == "--experimental" => watts
-                    .parse::<u16>()
-                    .map(RequestedOperation::GpuTdpWatts)
-                    .map_err(|_| "GPU TDP must be an integer".to_owned()),
-                _ => Err("unknown validation request".to_owned()),
-            };
-            operation
+            let tokens: Vec<&str> = rest
+                .iter()
+                .map(String::as_str)
+                .filter(|argument| *argument != "--experimental")
+                .collect();
+            ipc::parse_operation(&tokens)
                 .and_then(|operation| {
                     validate_operation(current_supported_device(), operation, experimental)
                         .map_err(|error| error.to_string())
                 })
                 .map(|_| "accepted by safety policy; no hardware command was sent".to_owned())
+        }
+        [command, rest @ ..] if command == "daemon" => {
+            let experimental = rest.iter().any(|argument| argument == "--experimental");
+            run_daemon(experimental)
+        }
+        [command, rest @ ..] if command == "ctl" && !rest.is_empty() => {
+            send_to_daemon(&rest.join(" "))
         }
         _ => {
             usage();

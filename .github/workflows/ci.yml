@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit tests
+        run: cargo test --locked
+      - name: Formatting
+        run: cargo fmt --check
+
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build tooling
+        run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros
+      - uses: actions/checkout@v4
+      - name: Build source tarball
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p ~/rpmbuild/SOURCES
+          git archive --format=tar.gz \
+            --prefix=razer-control-secureblue-0.1.0/ \
+            -o ~/rpmbuild/SOURCES/razer-control-secureblue-0.1.0.tar.gz HEAD
+      - name: Build RPM
+        run: rpmbuild -ba packaging/razer-control-secureblue.spec
+      - name: Install RPM and verify the Atomic-relevant layout
+        run: |
+          dnf install -y ~/rpmbuild/RPMS/*/razer-control-secureblue-*.rpm
+          test -x /usr/bin/razer-control
+          test -f /usr/lib/udev/rules.d/70-razer-control-secureblue.rules
+          test -f /usr/lib/systemd/user/razer-control.socket
+          test -f /usr/lib/systemd/user/razer-control.service
+          if grep -q '0666' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules; then
+            echo 'world-writable udev rule detected'; exit 1
+          fi
+          grep -q 'uaccess' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules
+          /usr/bin/razer-control device 1532 029d
+          /usr/bin/razer-control validate fan manual 3000
+          ! /usr/bin/razer-control validate gpu-tdp 140
