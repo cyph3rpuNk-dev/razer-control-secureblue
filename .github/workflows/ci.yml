@@ -8,7 +8,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Unit tests
         run: cargo test --locked
       - name: Formatting
@@ -20,7 +20,7 @@ jobs:
     steps:
       - name: Install build tooling
         run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build source tarball
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -37,10 +37,10 @@ jobs:
           test -f /usr/lib/udev/rules.d/70-razer-control-secureblue.rules
           test -f /usr/lib/systemd/user/razer-control.socket
           test -f /usr/lib/systemd/user/razer-control.service
-          if grep -q '0666' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules; then
+          if grep -v '^#' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules | grep -q '0666'; then
             echo 'world-writable udev rule detected'; exit 1
           fi
-          grep -q 'uaccess' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules
+          grep -v '^#' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules | grep -q 'uaccess'
           /usr/bin/razer-control device 1532 029d
           /usr/bin/razer-control validate fan manual 3000
           ! /usr/bin/razer-control validate gpu-tdp 140
