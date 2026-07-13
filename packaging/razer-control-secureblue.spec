@@ -25,13 +25,15 @@ dry-run daemon; it sends no hardware commands.
 %autosetup
 
 %build
-cargo build --release --locked
+cargo build --release --locked --workspace
 
 %check
-cargo test --release --locked
+cargo test --release --locked --workspace
 
 %install
 install -Dm0755 target/release/razer-control %{buildroot}%{_bindir}/razer-control
+install -Dm0755 target/release/razer-control-gui %{buildroot}%{_bindir}/razer-control-gui
+install -Dm0644 packaging/razer-control-gui.desktop %{buildroot}%{_datadir}/applications/razer-control-gui.desktop
 install -Dm0644 udev/70-razer-control-secureblue.rules %{buildroot}%{_udevrulesdir}/70-razer-control-secureblue.rules
 install -Dm0644 systemd/razer-control.socket %{buildroot}%{_userunitdir}/razer-control.socket
 install -Dm0644 systemd/razer-control.service %{buildroot}%{_userunitdir}/razer-control.service
@@ -46,6 +48,8 @@ install -Dm0644 systemd/razer-control.service %{buildroot}%{_userunitdir}/razer-
 %license LICENSE
 %doc README.md
 %{_bindir}/razer-control
+%{_bindir}/razer-control-gui
+%{_datadir}/applications/razer-control-gui.desktop
 %{_udevrulesdir}/70-razer-control-secureblue.rules
 %{_userunitdir}/razer-control.socket
 %{_userunitdir}/razer-control.service

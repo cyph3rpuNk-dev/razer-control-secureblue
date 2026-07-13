@@ -1,3 +1,6 @@
+[workspace]
+members = ["gui"]
+
 [package]
 name = "razer-control-secureblue"
 version = "0.1.0"

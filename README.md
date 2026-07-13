@@ -64,6 +64,27 @@ razer-control ctl fan manual 3000
 razer-control ctl fan auto
 ```
 
+## Control GUI
+
+`razer-control-gui` (in [gui/](gui/)) is an Iced app that is a pure IPC
+client: every button press becomes one line of the daemon protocol, and all
+safety decisions stay in the daemon. It runs on any platform with
+`--mock` (an in-process instance of the identical daemon core with the
+dry-run backend), which is how it is developed and tested off-device:
+
+```bash
+cargo run -p razer-control-gui -- --mock
+```
+
+On Linux it talks to the real per-user socket by default.
+
+## Installation
+
+See [docs/INSTALL.md](docs/INSTALL.md) for the Atomic/Secureblue paths:
+release RPM via `rpm-ostree install`, a BlueBuild custom-image snippet, and
+the planned COPR repository. Tagged releases ship RPMs with SHA256 checksums
+built by CI.
+
 ## Atomic/Secureblue packaging direction
 
 This project will ship a signed RPM and an OCI/custom-image recipe. A host service is necessary because the laptop controller is a local HID device; a Flatpak alone cannot safely provide this feature.

@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build tooling
+        run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros gh
+      - uses: actions/checkout@v5
+      - name: Build source tarball
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VERSION="$(rpmspec -q --qf '%{version}\n' packaging/razer-control-secureblue.spec | head -1)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p ~/rpmbuild/SOURCES
+          git archive --format=tar.gz \
+            --prefix="razer-control-secureblue-${VERSION}/" \
+            -o ~/rpmbuild/SOURCES/razer-control-secureblue-"${VERSION}".tar.gz HEAD
+      - name: Build RPM
+        run: rpmbuild -ba packaging/razer-control-secureblue.spec
+      - name: Collect artifacts and checksums
+        run: |
+          mkdir dist
+          cp ~/rpmbuild/RPMS/*/razer-control-secureblue-[0-9]*.rpm dist/
+          cp ~/rpmbuild/SRPMS/razer-control-secureblue-*.src.rpm dist/
+          cd dist && sha256sum * | tee SHA256SUMS
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "RPM built in a Fedora container by the Release workflow. Verify with: sha256sum -c SHA256SUMS. Install on Fedora Atomic/Secureblue: rpm-ostree install ./razer-control-secureblue-*.rpm — see docs/INSTALL.md."

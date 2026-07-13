@@ -1,0 +1,17 @@
+[package]
+name = "razer-control-gui"
+version = "0.1.0"
+edition = "2024"
+description = "Control GUI for razer-control-secureblue; a thin client over the daemon socket"
+license = "GPL-2.0-only"
+
+[[bin]]
+name = "razer-control-gui"
+path = "src/main.rs"
+
+[dependencies]
+iced = "0.13"
+razer-control-secureblue = { path = ".." }
+
+[lints.rust]
+unsafe_code = "forbid"
