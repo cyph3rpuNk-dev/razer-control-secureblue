@@ -7,7 +7,7 @@ Version:        0.1.0
 Release:        1%{?dist}
 Summary:        Safety-first Razer Blade control for Atomic Linux
 License:        GPL-2.0-only
-URL:            https://github.com/llmplayerx/razer-control-secureblue
+URL:            https://github.com/cyph3rpuNk-dev/razer-control-secureblue
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  cargo
