@@ -198,6 +198,7 @@ export default function Home() {
                         step={100}
                         value={profile.rpm}
                         marker={FAN_DEFAULT_RPM}
+                        gradient
                         onChange={(rpm) => updateProfile({ rpm }, false)}
                         onCommit={(rpm) => updateProfile({ rpm }, true)}
                       />
@@ -424,6 +425,7 @@ function BubbleSlider({
   step,
   value,
   marker,
+  gradient = false,
   onChange,
   onCommit,
 }: {
@@ -432,6 +434,7 @@ function BubbleSlider({
   step: number;
   value: number;
   marker?: number;
+  gradient?: boolean;
   onChange: (value: number) => void;
   onCommit: (value: number) => void;
 }) {
@@ -456,6 +459,14 @@ function BubbleSlider({
         value={[value]}
         onValueChange={([next]) => onChange(next)}
         onValueCommit={([next]) => onCommit(next)}
+        className={
+          gradient
+            ? // Synapse fan track: heat gradient (red = low airflow temp
+              // headroom, blue = high), uniform across the whole track,
+              // with the green thumb riding on top.
+              "[&_[data-slot=slider-track]]:bg-[linear-gradient(to_right,#b23c17,#2b58c8)] [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-thumb]]:border-primary [&_[data-slot=slider-thumb]]:bg-primary [&_[data-slot=slider-thumb]]:ring-primary/40"
+            : undefined
+        }
       />
       {markerPct !== undefined && (
         <span
