@@ -50,15 +50,20 @@ Pin the exact release URL and record the SHA256 alongside your recipe.
 
 ## Path C — COPR (planned)
 
-A COPR repository requires network-free builds (vendored crate sources).
-Tracked for the packaging milestone; until then Path A is the source of
-truth.
+A COPR repository requires network-free builds, and shipping the Tauri app
+made that harder rather than easier. Three things are fetched during the
+build today: the crate sources, the npm packages the frontend is built from,
+and — via `next/font/google` — Roboto Mono from Google's font CDN. Vendoring
+the first two is routine (`cargo vendor`/rust2rpm, a pnpm store tarball); the
+third wants the font self-hosted next to Selawik in `webui/public/fonts`.
+Tracked for the packaging milestone; until then Path A is the source of truth.
 
 ## Verify the install
 
 ```bash
 razer-control device 1532 029d          # capability table lookup
 razer-control ctl status                # socket activation round trip
+razer-control-desktop                   # the GUI, over the same socket
 ./scripts/blade-smoke-test.sh           # full on-device check (from a clone)
 ```
 
@@ -67,9 +72,16 @@ razer-control ctl status                # socket activation round trip
 - **USBGuard**: the Blade's EC is an internal USB device present at boot, so
   a policy generated on this machine already allows it. If you maintain a
   hand-tightened policy, allow `1532:029d`.
-- **hardened_malloc**: the daemon and GUI are plain Rust binaries and run
+- **hardened_malloc**: the daemon and tray are plain Rust binaries and run
   under Secureblue's LD_PRELOAD hardening; if you hit an allocator abort,
   file it with the journal lines — that is a bug we want to know about.
+- **WebKitGTK**: `razer-control-desktop` is a Tauri app, so it renders through
+  the system WebKitGTK (`webkit2gtk4.1`, pulled in as a dependency) rather
+  than being a self-contained binary. The webview holds no policy — every
+  action it takes is one line of the daemon IPC protocol — but it is the one
+  component with a browser engine in it, and on a hardened image it is the
+  most likely thing to need a `journalctl --user` look if the window fails to
+  come up. The daemon, the tray, and the CLI do not depend on it.
 - The udev rule grants access via `TAG+="uaccess"` (active local session
   only). Nothing is world-writable and nothing runs as root.
 

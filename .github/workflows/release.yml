@@ -13,8 +13,10 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build tooling
-        run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros dbus-devel gh
+        run: dnf install -y git rpm-build rpmdevtools 'dnf-command(builddep)' gh
       - uses: actions/checkout@v5
+      - name: Install spec build dependencies
+        run: dnf builddep -y packaging/razer-control-secureblue.spec
       - name: Build source tarball
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"

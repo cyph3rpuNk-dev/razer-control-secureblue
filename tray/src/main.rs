@@ -39,7 +39,7 @@ mod unix {
         }
 
         fn icon_name(&self) -> String {
-            "razer-control-gui".into()
+            "razer-control-desktop".into()
         }
 
         fn title(&self) -> String {
@@ -62,9 +62,9 @@ mod unix {
             vec![
                 StandardItem {
                     label: "Open Razer Control".into(),
-                    icon_name: "razer-control-gui".into(),
+                    icon_name: "razer-control-desktop".into(),
                     activate: Box::new(|_: &mut Self| {
-                        let _ = std::process::Command::new("razer-control-gui").spawn();
+                        let _ = std::process::Command::new("razer-control-desktop").spawn();
                     }),
                     ..Default::default()
                 }

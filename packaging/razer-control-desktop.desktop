@@ -2,8 +2,8 @@
 Name=Razer Control
 GenericName=Fan and battery control
 Comment=Safe fan profile and charge limit control for Razer Blade laptops
-Exec=razer-control-gui
-Icon=razer-control-gui
+Exec=razer-control-desktop
+Icon=razer-control-desktop
 Terminal=false
 Type=Application
 Categories=System;Settings;HardwareSettings;

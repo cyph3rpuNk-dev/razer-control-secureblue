@@ -67,22 +67,30 @@ razer-control ctl fan auto
 
 ## Control GUI
 
-`razer-control-gui` (in [gui/](gui/)) is an Iced app that is a pure IPC
-client: every button press becomes one line of the daemon protocol, and all
-safety decisions stay in the daemon. It runs on any platform with
-`--mock` (an in-process instance of the identical daemon core with the
-dry-run backend), which is how it is developed and tested off-device:
+`razer-control-desktop` (in [webui/](webui/)) is a Tauri shell around a
+Next.js UI, and it is a pure IPC client: every button press becomes one line
+of the daemon protocol, and all safety decisions stay in the daemon. The
+styling follows Razer Synapse: dark cards, green accents, pill navigation.
+
+On Linux it talks to the real per-user socket by default. Setting
+`RAZER_CONTROL_MOCK=1` — and any non-Linux platform, which is how the UI is
+developed on Windows — swaps the transport for an in-process instance of the
+identical daemon core with the dry-run backend, so no hardware is touched:
 
 ```bash
-cargo run -p razer-control-gui -- --mock
+cd webui
+pnpm install
+RAZER_CONTROL_MOCK=1 pnpm tauri dev
 ```
 
-On Linux it talks to the real per-user socket by default. The styling follows
-Razer Synapse: dark cards, green accents, pill navigation.
+The Rust side of the shell holds no policy. Beyond forwarding IPC lines it
+only does desktop-integration work that needs no privileges: reading the
+power source, switching the panel refresh rate via `kscreen-doctor`, and
+opening an allowlisted KDE System Settings module.
 
 `razer-control-tray` is a StatusNotifierItem tray for KDE Plasma (ksni): a
 third thin client whose menu actions each send one IPC line — fan auto, a
-manual preset, charge limit, and launching the GUI. Start it from the
+manual preset, charge limit, and launching the desktop app. Start it from the
 application menu or add it to Plasma autostart.
 
 ## Installation

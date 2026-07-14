@@ -9,12 +9,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install libdbus (ksni tray)
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+      - name: Install libdbus (ksni tray) and WebKitGTK (Tauri shell)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libssl-dev
+      - name: Build the web UI
+        # razer-control-desktop embeds webui/out via tauri::generate_context!,
+        # so the static export has to exist before cargo touches the crate.
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          npm install -g pnpm@11
+          cd webui
+          pnpm install --frozen-lockfile
+          pnpm build
       - name: Unit tests
-        # razer-control-desktop (Tauri) is excluded until it ships: compiling
-        # it on Linux needs webkit2gtk and it is not in the RPM yet.
-        run: cargo test --locked --workspace --exclude razer-control-desktop
+        run: cargo test --locked --workspace
       - name: Formatting
         run: cargo fmt --all --check
 
@@ -23,8 +34,11 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build tooling
-        run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros dbus-devel
+        run: |
+          dnf install -y git rpm-build rpmdevtools 'dnf-command(builddep)'
       - uses: actions/checkout@v5
+      - name: Install spec build dependencies
+        run: dnf builddep -y packaging/razer-control-secureblue.spec
       - name: Build source tarball
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -45,10 +59,12 @@ jobs:
             echo 'world-writable udev rule detected'; exit 1
           fi
           grep -v '^#' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules | grep -q 'uaccess'
-          test -x /usr/bin/razer-control-gui
+          test -x /usr/bin/razer-control-desktop
           test -x /usr/bin/razer-control-tray
-          test -f /usr/share/applications/razer-control-gui.desktop
-          test -f /usr/share/icons/hicolor/scalable/apps/razer-control-gui.svg
+          test -f /usr/share/applications/razer-control-desktop.desktop
+          test -f /usr/share/icons/hicolor/scalable/apps/razer-control-desktop.svg
+          # The desktop entry must point at the binary the RPM actually ships.
+          grep -q '^Exec=razer-control-desktop$' /usr/share/applications/razer-control-desktop.desktop
           /usr/bin/razer-control device 1532 029d
           /usr/bin/razer-control validate fan manual 3000
           ! /usr/bin/razer-control validate gpu-tdp 140
