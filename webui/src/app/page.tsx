@@ -236,11 +236,11 @@ export default function Home() {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* Header */}
       <header className="border-b border-border bg-black/40">
-        <p className="pt-4 text-center text-sm font-medium tracking-[0.2em] text-foreground">
+        <p className="pt-3 text-center text-sm font-medium tracking-[0.2em] text-foreground">
           RAZER BLADE 14
         </p>
         <Tabs value={tab} onValueChange={setTab} className="items-center">
-          <TabsList className="mb-3 mt-2 gap-1 bg-transparent">
+          <TabsList className="mb-2 mt-1.5 gap-1 bg-transparent">
             {["performance", "display", "battery", "lighting"].map((value) => (
               <TabsTrigger
                 key={value}
@@ -255,12 +255,14 @@ export default function Home() {
       </header>
 
       {/* Body */}
-      <main className="w-full flex-1 px-7 py-7">
+      {/* Synapse keeps a fixed-width centered content column even when
+          maximized — content never scales with the window. */}
+      <main className="mx-auto w-full max-w-[880px] flex-1 px-6 py-5">
         <AnimatePresence mode="wait">
           <motion.div key={tab} {...fade}>
             {tab === "performance" && (
               <Card>
-                <CardContent className="space-y-6 pt-6">
+                <CardContent className="space-y-5 pt-6">
                   {/* Title + hardware shortcut */}
                   <div className="flex items-center">
                     <SectionTitle>Performance Modes</SectionTitle>
@@ -861,7 +863,7 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="flex items-center gap-4 border-t border-border px-6 py-3 text-xs">
+      <footer className="flex items-center gap-4 border-t border-border px-6 py-2 text-xs">
         <span className="text-muted-foreground">
           {DEVICE_NAME} ({DEVICE_ID}) via {transport}
         </span>
@@ -913,7 +915,7 @@ function ModeTile({
     <motion.button
       whileTap={locked ? undefined : { scale: 0.99 }}
       disabled={locked}
-      className={`relative flex h-36 flex-col items-center justify-center gap-3 rounded-md border bg-secondary/60 transition-colors ${
+      className={`relative flex h-28 flex-col items-center justify-center gap-2 rounded-md border bg-secondary/60 transition-colors ${
         selected
           ? "border-primary"
           : "border-border"
