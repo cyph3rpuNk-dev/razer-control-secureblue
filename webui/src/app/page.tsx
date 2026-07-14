@@ -9,14 +9,16 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Fan,
   Gauge,
-  Lightbulb,
+  Link2,
   Lock,
   RefreshCw,
   Settings,
+  Unlink,
   Waves,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
@@ -59,6 +61,21 @@ export default function Home() {
   // Synapse default: BHO on, and it stays on across AC transitions until
   // the user turns it off themselves.
   const [bhoEnabled, setBhoEnabled] = useState(true);
+
+  // Lighting state is a design preview: fully interactive, but nothing is
+  // sent — the daemon gains lighting operations with the protocol import.
+  const [sysLightPower, setSysLightPower] = useState<PowerSource>("pluggedIn");
+  const [offLightPower, setOffLightPower] = useState<PowerSource>("pluggedIn");
+  const [brightnessOn, setBrightnessOn] = useState(true);
+  const [brightness, setBrightness] = useState(40);
+  const [logoMode, setLogoMode] = useState("Static");
+  const [offWhenDisplayOff, setOffWhenDisplayOff] = useState(false);
+  const [offWhenIdle, setOffWhenIdle] = useState(false);
+  const [idleMinutes, setIdleMinutes] = useState(30);
+  const [effectsMode, setEffectsMode] = useState<"quick" | "advanced">(
+    "quick",
+  );
+  const [quickEffect, setQuickEffect] = useState("Spectrum Cycling");
   const [status, setStatus] = useState("");
   const [lastResponse, setLastResponse] = useState("");
   const [transport, setTransport] = useState("…");
@@ -100,6 +117,11 @@ export default function Home() {
     setLastResponse(await daemonRequest(line));
     await refresh();
   };
+
+  const lightingPreview = () =>
+    setLastResponse(
+      "preview only — lighting commands arrive with the HID protocol import",
+    );
 
   const applyFan = (next: FanProfile) =>
     send(next.choice === "auto" ? "fan auto" : `fan manual ${next.rpm}`);
@@ -332,19 +354,194 @@ export default function Home() {
             )}
 
             {tab === "lighting" && (
-              <Card>
-                <CardContent className="space-y-3 pt-6">
-                  <div className="flex items-center gap-2">
-                    <SectionTitle>Lighting</SectionTitle>
-                    <Lightbulb className="size-4 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Keyboard brightness and Chroma effects arrive with the HID
-                    protocol import (next milestone). No mock controls are
-                    shown for hardware the daemon cannot drive yet.
-                  </p>
-                </CardContent>
-              </Card>
+              <div className="space-y-6">
+                <Card>
+                  <CardContent className="space-y-5 pt-6">
+                    <SectionTitle>System Lighting</SectionTitle>
+                    <LightingPowerTabs
+                      value={sysLightPower}
+                      onChange={setSysLightPower}
+                    />
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-[15px] uppercase tracking-[0.12em] text-primary">
+                        Brightness
+                      </h3>
+                      <Switch
+                        checked={brightnessOn}
+                        onCheckedChange={(checked) => {
+                          setBrightnessOn(checked);
+                          lightingPreview();
+                        }}
+                      />
+                    </div>
+                    <div
+                      className={
+                        brightnessOn ? "" : "pointer-events-none opacity-40"
+                      }
+                    >
+                      <BubbleSlider
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={brightness}
+                        onChange={setBrightness}
+                        onCommit={lightingPreview}
+                      />
+                      <div className="flex justify-between text-[15px] text-foreground">
+                        <span>OFF</span>
+                        <span>BRIGHT</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2 pt-1">
+                      <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
+                        Logo
+                      </p>
+                      <select
+                        value={logoMode}
+                        onChange={(event) => {
+                          setLogoMode(event.target.value);
+                          lightingPreview();
+                        }}
+                        className="h-10 w-48 rounded-none border border-border bg-secondary px-2 text-[15px] text-foreground focus:border-primary focus:outline-none"
+                      >
+                        {["Off", "Static", "Breathing"].map((mode) => (
+                          <option key={mode} value={mode}>
+                            {mode}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="space-y-5 pt-6">
+                    <SectionTitle>Switch Off Lighting</SectionTitle>
+                    <LightingPowerTabs
+                      value={offLightPower}
+                      onChange={setOffLightPower}
+                    />
+                    <label className="flex items-center gap-3 text-[15px] text-foreground">
+                      <Checkbox
+                        checked={offWhenDisplayOff}
+                        onCheckedChange={(checked) => {
+                          setOffWhenDisplayOff(checked === true);
+                          lightingPreview();
+                        }}
+                        className="size-5"
+                      />
+                      When display is turned Off
+                    </label>
+                    <label className="flex items-center gap-3 text-[15px] text-foreground">
+                      <Checkbox
+                        checked={offWhenIdle}
+                        onCheckedChange={(checked) => {
+                          setOffWhenIdle(checked === true);
+                          lightingPreview();
+                        }}
+                        className="size-5"
+                      />
+                      When idle for (minutes)
+                    </label>
+                    <div
+                      className={`px-8 ${
+                        offWhenIdle ? "" : "pointer-events-none opacity-40"
+                      }`}
+                    >
+                      <BubbleSlider
+                        min={1}
+                        max={60}
+                        step={1}
+                        value={idleMinutes}
+                        onChange={setIdleMinutes}
+                        onCommit={lightingPreview}
+                      />
+                      <div className="flex justify-between text-[15px] text-muted-foreground">
+                        <span>1</span>
+                        <span>60</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="space-y-5 pt-6">
+                    <SectionTitle>Effects</SectionTitle>
+                    <div className="inline-flex rounded-full border border-border p-1">
+                      {(
+                        [
+                          ["quick", "Quick Effects"],
+                          ["advanced", "Advanced Effects"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          onClick={() => {
+                            setEffectsMode(value);
+                            lightingPreview();
+                          }}
+                          className={`rounded-full px-5 py-1.5 text-[15px] transition-colors ${
+                            effectsMode === value
+                              ? "bg-primary text-primary-foreground"
+                              : "text-foreground hover:text-primary"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {effectsMode === "quick" ? (
+                      <>
+                        <p className="text-[15px] text-foreground">
+                          Quick effects are presets that can be saved to a
+                          device&apos;s profile and synced with other supported
+                          Razer Chroma-enabled devices.
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <select
+                            value={quickEffect}
+                            onChange={(event) => {
+                              setQuickEffect(event.target.value);
+                              lightingPreview();
+                            }}
+                            className="h-10 w-48 rounded-none border border-border bg-secondary px-2 text-[15px] text-foreground focus:border-primary focus:outline-none"
+                          >
+                            {[
+                              "Spectrum Cycling",
+                              "Static",
+                              "Breathing",
+                              "Wave",
+                              "Reactive",
+                            ].map((effect) => (
+                              <option key={effect} value={effect}>
+                                {effect}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="size-6 shrink-0 rounded-full bg-[conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)]" />
+                          <button
+                            onClick={lightingPreview}
+                            className="text-[15px] text-foreground underline underline-offset-4 hover:text-primary"
+                          >
+                            Apply to other Chroma-enabled devices
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-[15px] text-muted-foreground">
+                        Advanced Chroma layering arrives with the HID protocol
+                        import.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <p className="text-xs text-muted-foreground">
+                  Design preview: these controls do not send hardware commands
+                  yet — keyboard lighting joins the daemon protocol with the
+                  HID import milestone.
+                </p>
+              </div>
             )}
           </motion.div>
         </AnimatePresence>
@@ -606,6 +803,51 @@ function BhoSlider({
         </span>
         <span className="absolute right-0">100</span>
       </div>
+    </div>
+  );
+}
+
+// Per-card AC/battery sub-profile tabs used by the lighting cards, with the
+// Synapse link/unlink toggle (linked = one profile for both power sources).
+function LightingPowerTabs({
+  value,
+  onChange,
+}: {
+  value: PowerSource;
+  onChange: (value: PowerSource) => void;
+}) {
+  const [linked, setLinked] = useState(false);
+  return (
+    <div className="flex items-center border-b border-border">
+      {(
+        [
+          ["pluggedIn", "Plugged In"],
+          ["onBattery", "On Battery"],
+        ] as const
+      ).map(([tabValue, label]) => (
+        <button
+          key={tabValue}
+          onClick={() => onChange(tabValue)}
+          className={`-mb-px px-5 py-2.5 text-[15px] transition-colors ${
+            value === tabValue
+              ? "border border-border border-b-card bg-card text-primary"
+              : "border border-transparent bg-secondary text-foreground/90 hover:text-foreground"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+      <button
+        onClick={() => setLinked((current) => !current)}
+        title={
+          linked
+            ? "Profiles linked across power sources"
+            : "Separate profiles per power source"
+        }
+        className="ml-3 pb-1 text-foreground/80 hover:text-primary"
+      >
+        {linked ? <Link2 className="size-5" /> : <Unlink className="size-5" />}
+      </button>
     </div>
   );
 }
