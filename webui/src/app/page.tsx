@@ -21,6 +21,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -557,21 +564,15 @@ export default function Home() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <select
-                        value={bho}
-                        onChange={(event) => {
-                          const value = Number(event.target.value);
-                          setBho(value);
+                      <SynapseSelect
+                        value={String(bho)}
+                        options={["50", "55", "60", "65", "70", "75", "80"]}
+                        onChange={(value) => {
+                          setBho(Number(value));
                           send(`bho ${value}`);
                         }}
-                        className="h-10 w-20 rounded-none border border-border bg-secondary px-2 text-[15px] text-foreground focus:border-primary focus:outline-none"
-                      >
-                        {[50, 55, 60, 65, 70, 75, 80].map((value) => (
-                          <option key={value} value={value}>
-                            {value}
-                          </option>
-                        ))}
-                      </select>
+                        className="w-20"
+                      />
                       <span className="text-[15px] text-foreground">%</span>
                     </div>
                     <BhoSlider
@@ -636,20 +637,14 @@ export default function Home() {
                       <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
                         Logo
                       </p>
-                      <select
+                      <SynapseSelect
                         value={sys.logo}
-                        onChange={(event) => {
-                          patchSys({ logo: event.target.value });
+                        options={["Off", "Static", "Breathing"]}
+                        onChange={(mode) => {
+                          patchSys({ logo: mode });
                           lightingPreview();
                         }}
-                        className="h-10 w-48 rounded-none border border-border bg-secondary px-2 text-[15px] text-foreground focus:border-primary focus:outline-none"
-                      >
-                        {["Off", "Static", "Breathing"].map((mode) => (
-                          <option key={mode} value={mode}>
-                            {mode}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -782,26 +777,24 @@ export default function Home() {
                           Razer Chroma-enabled devices.
                         </p>
                         <div className="flex items-center gap-4">
-                          <select
+                          <SynapseSelect
                             value={quickEffect}
-                            onChange={(event) => {
-                              setQuickEffect(event.target.value);
+                            options={[
+                              "Breathing",
+                              "Reactive",
+                              "Ripple",
+                              "Spectrum Cycling",
+                              "Starlight",
+                              "Static",
+                              "Tidal",
+                              "Wave",
+                              "Wheel",
+                            ]}
+                            onChange={(effect) => {
+                              setQuickEffect(effect);
                               lightingPreview();
                             }}
-                            className="h-10 w-48 rounded-none border border-border bg-secondary px-2 text-[15px] text-foreground focus:border-primary focus:outline-none"
-                          >
-                            {[
-                              "Spectrum Cycling",
-                              "Static",
-                              "Breathing",
-                              "Wave",
-                              "Reactive",
-                            ].map((effect) => (
-                              <option key={effect} value={effect}>
-                                {effect}
-                              </option>
-                            ))}
-                          </select>
+                          />
                           <span className="size-6 shrink-0 rounded-full bg-[conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)]" />
                           <button
                             onClick={lightingPreview}
@@ -1182,5 +1175,43 @@ function LightingPowerTabs({
         {linked ? <Link2 className="size-5" /> : <Unlink className="size-5" />}
       </button>
     </div>
+  );
+}
+
+// Synapse-styled dropdown: boxy dark trigger, black option list where rows
+// turn dark grey only on hover and the selected option reads in green.
+function SynapseSelect({
+  value,
+  options,
+  onChange,
+  className = "w-48",
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
+        className={`h-10 rounded-none border-border bg-secondary px-3 text-[15px] text-foreground focus-visible:border-primary focus-visible:ring-0 data-[state=open]:border-primary dark:bg-secondary dark:hover:bg-secondary ${className}`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent
+        position="popper"
+        className="rounded-none bg-black text-foreground ring-border"
+      >
+        {options.map((option) => (
+          <SelectItem
+            key={option}
+            value={option}
+            className="rounded-none py-2 pl-3 pr-8 text-[15px] focus:bg-[#2a2a2a] focus:text-foreground data-[state=checked]:text-primary [&_svg]:hidden"
+          >
+            {option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
