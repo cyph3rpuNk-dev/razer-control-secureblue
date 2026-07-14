@@ -29,6 +29,28 @@ fn daemon_request(line: String, mock: tauri::State<'_, MockDaemon>) -> Result<St
         .handle_line(&line))
 }
 
+/// Current power source, so the UI can follow AC/battery transitions the
+/// way Synapse does. Read-only; profile auto-application on transitions is
+/// daemon work (diagnostics milestone), not GUI work.
+#[tauri::command]
+fn power_source() -> &'static str {
+    let Ok(manager) = starship_battery::Manager::new() else {
+        return "unknown";
+    };
+    let Ok(batteries) = manager.batteries() else {
+        return "unknown";
+    };
+    for battery in batteries.flatten() {
+        use starship_battery::State;
+        return match battery.state() {
+            State::Discharging | State::Empty => "onBattery",
+            State::Charging | State::Full => "pluggedIn",
+            _ => "unknown",
+        };
+    }
+    "unknown"
+}
+
 #[tauri::command]
 fn transport_label() -> &'static str {
     #[cfg(unix)]
@@ -48,7 +70,11 @@ pub fn run() {
             DryRunBackend::default(),
             false,
         ))))
-        .invoke_handler(tauri::generate_handler![daemon_request, transport_label])
+        .invoke_handler(tauri::generate_handler![
+            daemon_request,
+            transport_label,
+            power_source
+        ])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

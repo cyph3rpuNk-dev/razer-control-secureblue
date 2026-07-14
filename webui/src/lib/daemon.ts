@@ -66,6 +66,32 @@ export async function daemonRequest(line: string): Promise<string> {
   return mockRequest(line);
 }
 
+export type DetectedPowerSource = "pluggedIn" | "onBattery" | "unknown";
+
+export async function detectPowerSource(): Promise<DetectedPowerSource> {
+  if (hasTauri()) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      return await invoke<DetectedPowerSource>("power_source");
+    } catch {
+      return "unknown";
+    }
+  }
+  // Plain browser preview: Battery Status API where available (Chromium).
+  try {
+    const nav = navigator as Navigator & {
+      getBattery?: () => Promise<{ charging: boolean }>;
+    };
+    if (nav.getBattery) {
+      const batteryInfo = await nav.getBattery();
+      return batteryInfo.charging ? "pluggedIn" : "onBattery";
+    }
+  } catch {
+    // fall through
+  }
+  return "unknown";
+}
+
 export async function transportLabel(): Promise<string> {
   if (hasTauri()) {
     try {

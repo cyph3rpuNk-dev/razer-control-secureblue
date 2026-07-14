@@ -4,7 +4,7 @@
 // daemon protocol line via daemonRequest(); no policy lives here. Controls
 // the daemon cannot drive yet render locked instead of pretending.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BatteryCharging,
@@ -32,6 +32,7 @@ import {
   FAN_MAX_RPM,
   FAN_MIN_RPM,
   daemonRequest,
+  detectPowerSource,
   transportLabel,
 } from "@/lib/daemon";
 
@@ -70,6 +71,28 @@ export default function Home() {
     refresh();
     transportLabel().then(setTransport);
   }, [refresh]);
+
+  // Follow AC/battery transitions like Synapse: when the detected source
+  // changes, switch the visible profile tab. Manual tab clicks still work
+  // between transitions.
+  const lastDetected = useRef<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const detected = await detectPowerSource();
+      if (cancelled || detected === "unknown") return;
+      if (detected !== lastDetected.current) {
+        lastDetected.current = detected;
+        setPower(detected);
+      }
+    };
+    check();
+    const timer = setInterval(check, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   const send = async (line: string) => {
     setLastResponse(await daemonRequest(line));
@@ -136,10 +159,10 @@ export default function Home() {
                         <button
                           key={value}
                           onClick={() => setPower(value)}
-                          className={`-mb-px px-5 py-2 text-sm transition-colors ${
+                          className={`-mb-px px-5 py-2.5 text-[15px] transition-colors ${
                             power === value
-                              ? "border border-border border-b-background bg-secondary text-primary"
-                              : "border border-transparent text-muted-foreground hover:text-foreground"
+                              ? "border border-border border-b-card bg-card text-primary"
+                              : "border border-transparent bg-secondary text-foreground/90 hover:text-foreground"
                           }`}
                         >
                           {label}
@@ -148,27 +171,35 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Mode tiles */}
+                  {/* Mode tiles — on battery Synapse offers Balanced only,
+                      which matches the daemon: no manual fan unsupervised
+                      on battery. */}
                   <div className="grid grid-cols-2 gap-4">
                     <ModeTile
                       icon={<Gauge className="size-7" />}
                       label="Balanced"
                       selected
                     />
-                    <ModeTile
-                      icon={<Fan className="size-7" />}
-                      label="Silent"
-                      locked
-                    />
-                    <ModeTile
-                      icon={<Settings className="size-7" />}
-                      label="Custom"
-                      locked
-                    />
+                    {power === "pluggedIn" && (
+                      <>
+                        <ModeTile
+                          icon={<Fan className="size-7" />}
+                          label="Silent"
+                          locked
+                        />
+                        <ModeTile
+                          icon={<Settings className="size-7" />}
+                          label="Custom"
+                          locked
+                        />
+                      </>
+                    )}
                   </div>
 
-                  {/* Fan speed */}
-                  <div className="space-y-4">
+                  {/* Fan speed — plugged in only, like Synapse */}
+                  <div
+                    className={power === "pluggedIn" ? "space-y-4" : "hidden"}
+                  >
                     <p className="text-[15px] text-foreground">Fan Speed</p>
                     <RadioRow
                       selected={profile.choice === "auto"}
@@ -215,10 +246,12 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <Separator />
+                  {power === "pluggedIn" && <Separator />}
 
-                  {/* Voltage optimizer — locked */}
-                  <div className="space-y-2">
+                  {/* Voltage optimizer — locked, plugged in only */}
+                  <div
+                    className={power === "pluggedIn" ? "space-y-2" : "hidden"}
+                  >
                     <div className="flex items-center gap-3">
                       <h3 className="text-[15px] uppercase tracking-[0.12em] text-foreground">
                         CPU Voltage Optimizer
@@ -236,10 +269,11 @@ export default function Home() {
                   </div>
 
                   <p className="text-xs text-muted-foreground">
-                    Profiles are stored per power source; automatic switching
-                    on AC/battery events arrives with the diagnostics
-                    milestone. Silent and Custom modes unlock with the HID
-                    protocol import.
+                    The view follows the detected power source (unplug the
+                    charger and the tab switches). The daemon applying stored
+                    profiles on AC/battery transitions arrives with the
+                    diagnostics milestone; Silent and Custom modes unlock
+                    with the HID protocol import.
                   </p>
                 </CardContent>
               </Card>

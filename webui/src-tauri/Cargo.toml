@@ -19,6 +19,7 @@ log = "0.4"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
 razer-control-secureblue = { path = "../.." }
+starship-battery = "0.10"
 
 [lints.rust]
 unsafe_code = "forbid"
