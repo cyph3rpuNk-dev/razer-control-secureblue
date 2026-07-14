@@ -64,18 +64,60 @@ export default function Home() {
 
   // Lighting state is a design preview: fully interactive, but nothing is
   // sent — the daemon gains lighting operations with the protocol import.
+  // Each card keeps separate AC/battery profiles with Synapse's defaults
+  // (dimmer, quicker-to-switch-off on battery).
   const [sysLightPower, setSysLightPower] = useState<PowerSource>("pluggedIn");
   const [offLightPower, setOffLightPower] = useState<PowerSource>("pluggedIn");
-  const [brightnessOn, setBrightnessOn] = useState(true);
-  const [brightness, setBrightness] = useState(40);
-  const [logoMode, setLogoMode] = useState("Static");
-  const [offWhenDisplayOff, setOffWhenDisplayOff] = useState(false);
-  const [offWhenIdle, setOffWhenIdle] = useState(false);
-  const [idleMinutes, setIdleMinutes] = useState(30);
+  const [sysLight, setSysLight] = useState<
+    Record<PowerSource, { on: boolean; brightness: number; logo: string }>
+  >({
+    pluggedIn: { on: true, brightness: 40, logo: "Static" },
+    onBattery: { on: true, brightness: 20, logo: "Static" },
+  });
+  const [switchOff, setSwitchOff] = useState<
+    Record<
+      PowerSource,
+      {
+        displayOff: boolean;
+        idle: boolean;
+        idleMinutes: number;
+        batteryLevel: boolean;
+        batteryPercent: number;
+      }
+    >
+  >({
+    pluggedIn: {
+      displayOff: false,
+      idle: false,
+      idleMinutes: 30,
+      batteryLevel: false,
+      batteryPercent: 20,
+    },
+    onBattery: {
+      displayOff: false,
+      idle: false,
+      idleMinutes: 10,
+      batteryLevel: false,
+      batteryPercent: 20,
+    },
+  });
   const [effectsMode, setEffectsMode] = useState<"quick" | "advanced">(
     "quick",
   );
   const [quickEffect, setQuickEffect] = useState("Spectrum Cycling");
+
+  const sys = sysLight[sysLightPower];
+  const patchSys = (patch: Partial<(typeof sysLight)["pluggedIn"]>) =>
+    setSysLight((current) => ({
+      ...current,
+      [sysLightPower]: { ...current[sysLightPower], ...patch },
+    }));
+  const off = switchOff[offLightPower];
+  const patchOff = (patch: Partial<(typeof switchOff)["pluggedIn"]>) =>
+    setSwitchOff((current) => ({
+      ...current,
+      [offLightPower]: { ...current[offLightPower], ...patch },
+    }));
   const [status, setStatus] = useState("");
   const [lastResponse, setLastResponse] = useState("");
   const [transport, setTransport] = useState("…");
@@ -367,24 +409,22 @@ export default function Home() {
                         Brightness
                       </h3>
                       <Switch
-                        checked={brightnessOn}
+                        checked={sys.on}
                         onCheckedChange={(checked) => {
-                          setBrightnessOn(checked);
+                          patchSys({ on: checked });
                           lightingPreview();
                         }}
                       />
                     </div>
                     <div
-                      className={
-                        brightnessOn ? "" : "pointer-events-none opacity-40"
-                      }
+                      className={sys.on ? "" : "pointer-events-none opacity-40"}
                     >
                       <BubbleSlider
                         min={0}
                         max={100}
                         step={1}
-                        value={brightness}
-                        onChange={setBrightness}
+                        value={sys.brightness}
+                        onChange={(value) => patchSys({ brightness: value })}
                         onCommit={lightingPreview}
                       />
                       <div className="flex justify-between text-[15px] text-foreground">
@@ -397,9 +437,9 @@ export default function Home() {
                         Logo
                       </p>
                       <select
-                        value={logoMode}
+                        value={sys.logo}
                         onChange={(event) => {
-                          setLogoMode(event.target.value);
+                          patchSys({ logo: event.target.value });
                           lightingPreview();
                         }}
                         className="h-10 w-48 rounded-none border border-border bg-secondary px-2 text-[15px] text-foreground focus:border-primary focus:outline-none"
@@ -423,9 +463,9 @@ export default function Home() {
                     />
                     <label className="flex items-center gap-3 text-[15px] text-foreground">
                       <Checkbox
-                        checked={offWhenDisplayOff}
+                        checked={off.displayOff}
                         onCheckedChange={(checked) => {
-                          setOffWhenDisplayOff(checked === true);
+                          patchOff({ displayOff: checked === true });
                           lightingPreview();
                         }}
                         className="size-5"
@@ -434,9 +474,9 @@ export default function Home() {
                     </label>
                     <label className="flex items-center gap-3 text-[15px] text-foreground">
                       <Checkbox
-                        checked={offWhenIdle}
+                        checked={off.idle}
                         onCheckedChange={(checked) => {
-                          setOffWhenIdle(checked === true);
+                          patchOff({ idle: checked === true });
                           lightingPreview();
                         }}
                         className="size-5"
@@ -445,15 +485,15 @@ export default function Home() {
                     </label>
                     <div
                       className={`px-8 ${
-                        offWhenIdle ? "" : "pointer-events-none opacity-40"
+                        off.idle ? "" : "pointer-events-none opacity-40"
                       }`}
                     >
                       <BubbleSlider
                         min={1}
                         max={60}
                         step={1}
-                        value={idleMinutes}
-                        onChange={setIdleMinutes}
+                        value={off.idleMinutes}
+                        onChange={(value) => patchOff({ idleMinutes: value })}
                         onCommit={lightingPreview}
                       />
                       <div className="flex justify-between text-[15px] text-muted-foreground">
@@ -461,6 +501,43 @@ export default function Home() {
                         <span>60</span>
                       </div>
                     </div>
+                    {offLightPower === "onBattery" && (
+                      <>
+                        <label className="flex items-center gap-3 text-[15px] text-foreground">
+                          <Checkbox
+                            checked={off.batteryLevel}
+                            onCheckedChange={(checked) => {
+                              patchOff({ batteryLevel: checked === true });
+                              lightingPreview();
+                            }}
+                            className="size-5"
+                          />
+                          When battery level falls below (%):
+                        </label>
+                        <div
+                          className={`px-8 ${
+                            off.batteryLevel
+                              ? ""
+                              : "pointer-events-none opacity-40"
+                          }`}
+                        >
+                          <BubbleSlider
+                            min={10}
+                            max={50}
+                            step={1}
+                            value={off.batteryPercent}
+                            onChange={(value) =>
+                              patchOff({ batteryPercent: value })
+                            }
+                            onCommit={lightingPreview}
+                          />
+                          <div className="flex justify-between text-[15px] text-muted-foreground">
+                            <span>10</span>
+                            <span>50</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
