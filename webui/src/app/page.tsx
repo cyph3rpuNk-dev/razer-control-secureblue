@@ -236,7 +236,7 @@ export default function Home() {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* Header */}
       <header className="border-b border-border bg-black/40">
-        <p className="pt-3 text-center text-sm font-medium tracking-[0.2em] text-foreground">
+        <p className="pt-3 text-center text-base font-medium tracking-[0.2em] text-foreground">
           RAZER BLADE 14
         </p>
         <Tabs value={tab} onValueChange={setTab} className="items-center">
@@ -245,7 +245,7 @@ export default function Home() {
               <TabsTrigger
                 key={value}
                 value={value}
-                className="rounded-full px-5 text-xs uppercase tracking-wider text-muted-foreground transition-colors data-active:bg-primary data-active:text-primary-foreground dark:data-active:border-transparent dark:data-active:bg-primary dark:data-active:text-primary-foreground"
+                className="rounded-full px-5 text-[13px] uppercase tracking-wider text-muted-foreground transition-colors data-active:bg-primary data-active:text-primary-foreground dark:data-active:border-transparent dark:data-active:bg-primary dark:data-active:text-primary-foreground"
               >
                 {value}
               </TabsTrigger>
@@ -268,7 +268,7 @@ export default function Home() {
                     <SectionTitle>Performance Modes</SectionTitle>
                     <div className="ml-auto flex items-center gap-2">
                       <KeyChip>FN</KeyChip>
-                      <span className="text-sm text-muted-foreground">+</span>
+                      <span className="text-base text-muted-foreground">+</span>
                       <KeyChip>P</KeyChip>
                     </div>
                   </div>
@@ -285,7 +285,7 @@ export default function Home() {
                         <button
                           key={value}
                           onClick={() => setPower(value)}
-                          className={`-mb-px px-5 py-2.5 text-[15px] transition-colors ${
+                          className={`-mb-px px-5 py-2.5 text-[17px] transition-colors ${
                             power === value
                               ? "border border-border border-b-card bg-card text-primary"
                               : "border border-transparent bg-secondary text-foreground/90 hover:text-foreground"
@@ -326,7 +326,7 @@ export default function Home() {
                   <div
                     className={power === "pluggedIn" ? "space-y-4" : "hidden"}
                   >
-                    <p className="text-[15px] text-foreground">Fan Speed</p>
+                    <p className="text-[17px] text-foreground">Fan Speed</p>
                     <RadioRow
                       selected={profile.choice === "auto"}
                       title="Auto (Default)"
@@ -379,13 +379,13 @@ export default function Home() {
                     className={power === "pluggedIn" ? "space-y-2" : "hidden"}
                   >
                     <div className="flex items-center gap-3">
-                      <h3 className="text-[15px] uppercase tracking-[0.12em] text-foreground">
+                      <h3 className="text-[17px] uppercase tracking-[0.12em] text-foreground">
                         CPU Voltage Optimizer
                       </h3>
                       <Switch disabled checked={false} />
                       <Lock className="size-3.5 text-muted-foreground" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-base text-muted-foreground">
                       Adjusting voltage may increase the efficiency of the CPU
                       by setting the optimal minimum voltage without causing
                       performance losses. Locked until the safe controls have
@@ -394,7 +394,7 @@ export default function Home() {
                     </p>
                   </div>
 
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[13px] text-muted-foreground">
                     The view follows the detected power source (unplug the
                     charger and the tab switches). The daemon applying stored
                     profiles on AC/battery transitions arrives with the
@@ -413,17 +413,17 @@ export default function Home() {
                     <SectionTitle>Laptop Display</SectionTitle>
                     <div className="ml-auto flex items-center gap-2">
                       <KeyChip>FN</KeyChip>
-                      <span className="text-sm text-muted-foreground">+</span>
+                      <span className="text-base text-muted-foreground">+</span>
                       <KeyChip>R</KeyChip>
                     </div>
                   </div>
-                      <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
+                      <p className="text-[17px] uppercase tracking-[0.08em] text-foreground">
                         Current Resolution
                       </p>
-                      <p className="text-[15px] text-muted-foreground">
+                      <p className="text-[17px] text-muted-foreground">
                         {resolution}
                       </p>
-                      <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
+                      <p className="text-[17px] uppercase tracking-[0.08em] text-foreground">
                         Current Refresh Rate
                       </p>
                       <div className="flex">
@@ -431,7 +431,7 @@ export default function Home() {
                           <button
                             key={hz}
                             onClick={() => applyRefreshRate(hz)}
-                            className={`border px-6 py-2.5 text-[15px] transition-colors ${
+                            className={`border px-6 py-2.5 text-[17px] transition-colors ${
                               refreshRate === hz
                                 ? "border-primary bg-primary text-primary-foreground"
                                 : "border-border bg-secondary text-foreground hover:text-primary"
@@ -441,14 +441,14 @@ export default function Home() {
                           </button>
                         ))}
                       </div>
-                      <p className="text-[13px] text-muted-foreground">
+                      <p className="text-[14px] text-muted-foreground">
                         Applied live via kscreen-doctor on KDE Plasma; the
                         Windows/browser preview reports unsupported.
                       </p>
-                      <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
+                      <p className="text-[17px] uppercase tracking-[0.08em] text-foreground">
                         Battery Refresh Rate
                       </p>
-                      <label className="flex items-center gap-3 text-[15px] text-foreground">
+                      <label className="flex items-center gap-3 text-[17px] text-foreground">
                         <Checkbox
                           checked={sixtyOnBattery}
                           onCheckedChange={(checked) =>
@@ -459,7 +459,7 @@ export default function Home() {
                         Switch laptop screen refresh rate to 60Hz when on
                         battery.
                       </label>
-                      <p className="text-[13px] text-muted-foreground">
+                      <p className="text-[14px] text-muted-foreground">
                         Applies on AC/battery transitions while this app is
                         running; daemon-side automation lands with the
                         diagnostics milestone.
@@ -471,7 +471,7 @@ export default function Home() {
                   <SectionTitle>Color Profile</SectionTitle>
                       <select
                         disabled
-                        className="h-10 w-56 rounded-none border border-border bg-secondary px-2 text-[15px] text-muted-foreground"
+                        className="h-10 w-56 rounded-none border border-border bg-secondary px-2 text-[17px] text-muted-foreground"
                       >
                         <option></option>
                       </select>
@@ -479,7 +479,7 @@ export default function Home() {
                         onClick={async () =>
                           setLastResponse(await openKdeSettings("kcm_colors"))
                         }
-                        className="block text-[15px] text-foreground underline underline-offset-4 hover:text-primary"
+                        className="block text-[17px] text-foreground underline underline-offset-4 hover:text-primary"
                       >
                         Open Color Management
                       </button>
@@ -511,7 +511,7 @@ export default function Home() {
                           )
                         }
                       />
-                      <p className="text-[13px] text-muted-foreground">
+                      <p className="text-[14px] text-muted-foreground">
                         Locked: Razer GPU MUX switching has no established
                         safe path on Linux yet.
                       </p>
@@ -522,7 +522,7 @@ export default function Home() {
                   <SectionTitle>External Display</SectionTitle>
                       <div className="flex items-start gap-4">
                         <LayoutGrid className="size-10 text-foreground/70" />
-                        <p className="text-[15px] leading-relaxed text-foreground">
+                        <p className="text-[17px] leading-relaxed text-foreground">
                           To adjust refresh rate when a second monitor is
                           connected to the HDMI port, use the{" "}
                           <button
@@ -556,7 +556,7 @@ export default function Home() {
                       }}
                     />
                   </div>
-                  <p className="text-[15px] text-foreground">
+                  <p className="text-[17px] text-foreground">
                     Battery will stop charging when it has reached the limit
                     (%).
                   </p>
@@ -575,7 +575,7 @@ export default function Home() {
                         }}
                         className="w-20"
                       />
-                      <span className="text-[15px] text-foreground">%</span>
+                      <span className="text-[17px] text-foreground">%</span>
                     </div>
                     <BhoSlider
                       value={bho}
@@ -602,7 +602,7 @@ export default function Home() {
                       }}
                     />
                     <div className="flex items-center gap-3">
-                      <h3 className="text-[15px] uppercase tracking-[0.12em] text-primary">
+                      <h3 className="text-[17px] uppercase tracking-[0.12em] text-primary">
                         Brightness
                       </h3>
                       <Switch
@@ -625,18 +625,18 @@ export default function Home() {
                         onChange={(value) => patchSys({ brightness: value })}
                         onCommit={lightingPreview}
                       />
-                      <div className="flex justify-between text-[15px] text-foreground">
+                      <div className="flex justify-between text-[17px] text-foreground">
                         <span>OFF</span>
                         <span>BRIGHT</span>
                       </div>
                       {sysLinked && (
-                        <p className="text-right text-[14px] text-red-500">
+                        <p className="text-right text-[16px] text-red-500">
                           *This setting may reduce battery life
                         </p>
                       )}
                     </div>
                     <div className="space-y-2 pt-1">
-                      <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
+                      <p className="text-[17px] uppercase tracking-[0.08em] text-foreground">
                         Logo
                       </p>
                       <SynapseSelect
@@ -663,7 +663,7 @@ export default function Home() {
                         lightingPreview();
                       }}
                     />
-                    <label className="flex items-center gap-3 text-[15px] text-foreground">
+                    <label className="flex items-center gap-3 text-[17px] text-foreground">
                       <Checkbox
                         checked={off.displayOff}
                         onCheckedChange={(checked) => {
@@ -674,7 +674,7 @@ export default function Home() {
                       />
                       When display is turned Off
                     </label>
-                    <label className="flex items-center gap-3 text-[15px] text-foreground">
+                    <label className="flex items-center gap-3 text-[17px] text-foreground">
                       <Checkbox
                         checked={off.idle}
                         onCheckedChange={(checked) => {
@@ -698,14 +698,14 @@ export default function Home() {
                         onChange={(value) => patchOff({ idleMinutes: value })}
                         onCommit={lightingPreview}
                       />
-                      <div className="flex justify-between text-[15px] text-muted-foreground">
+                      <div className="flex justify-between text-[17px] text-muted-foreground">
                         <span>1</span>
                         <span>60</span>
                       </div>
                     </div>
                     {(offLinked || offLightPower === "onBattery") && (
                       <>
-                        <label className="flex items-center gap-3 text-[15px] text-foreground">
+                        <label className="flex items-center gap-3 text-[17px] text-foreground">
                           <Checkbox
                             checked={off.batteryLevel}
                             onCheckedChange={(checked) => {
@@ -735,7 +735,7 @@ export default function Home() {
                             }
                             onCommit={lightingPreview}
                           />
-                          <div className="flex justify-between text-[15px] text-muted-foreground">
+                          <div className="flex justify-between text-[17px] text-muted-foreground">
                             <span>10</span>
                             <span>50</span>
                           </div>
@@ -761,7 +761,7 @@ export default function Home() {
                             setEffectsMode(value);
                             lightingPreview();
                           }}
-                          className={`rounded-full px-5 py-1.5 text-[15px] transition-colors ${
+                          className={`rounded-full px-5 py-1.5 text-[17px] transition-colors ${
                             effectsMode === value
                               ? "bg-primary text-primary-foreground"
                               : "text-foreground hover:text-primary"
@@ -773,7 +773,7 @@ export default function Home() {
                     </div>
                     {effectsMode === "quick" ? (
                       <>
-                        <p className="text-[15px] text-foreground">
+                        <p className="text-[17px] text-foreground">
                           Quick effects are presets that can be saved to a
                           device&apos;s profile and synced with other supported
                           Razer Chroma-enabled devices.
@@ -800,7 +800,7 @@ export default function Home() {
                           <span className="size-6 shrink-0 rounded-full bg-[conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)]" />
                           <button
                             onClick={lightingPreview}
-                            className="text-[15px] text-foreground underline underline-offset-4 hover:text-primary"
+                            className="text-[17px] text-foreground underline underline-offset-4 hover:text-primary"
                           >
                             Apply to other Chroma-enabled devices
                           </button>
@@ -815,12 +815,12 @@ export default function Home() {
                           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.55))]" />
                           <div className="absolute inset-0 flex flex-col items-center justify-center gap-5">
                             <div className="flex size-28 flex-col items-center justify-center rounded-full border-4 border-transparent bg-black text-center [background:linear-gradient(#000,#000)_padding-box,conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)_border-box]">
-                              <span className="text-sm font-semibold leading-tight text-white">
+                              <span className="text-base font-semibold leading-tight text-white">
                                 POLY
                                 <br />
                                 CHROMATIC
                               </span>
-                              <span className="text-[10px] tracking-widest text-muted-foreground">
+                              <span className="text-[11px] tracking-widest text-muted-foreground">
                                 RGB
                               </span>
                             </div>
@@ -828,18 +828,18 @@ export default function Home() {
                               onClick={async () =>
                                 setLastResponse(await openPolychromatic())
                               }
-                              className="bg-primary px-6 py-2.5 text-[15px] font-medium uppercase tracking-wide text-primary-foreground hover:bg-primary/90"
+                              className="bg-primary px-6 py-2.5 text-[17px] font-medium uppercase tracking-wide text-primary-foreground hover:bg-primary/90"
                             >
                               Open Polychromatic
                             </button>
                           </div>
                         </div>
-                        <p className="text-[15px] text-foreground">
+                        <p className="text-[17px] text-foreground">
                           Get advanced per-key effects with Polychromatic, the
                           RGB suite for GNU/Linux powered by OpenRazer — if you
                           have installed it yourself.
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-[13px] text-muted-foreground">
                           Heads-up: OpenRazer requires DKMS kernel modules,
                           which Secureblue&apos;s hardening discourages and this
                           project deliberately does not ship. Native advanced
@@ -851,7 +851,7 @@ export default function Home() {
                   </CardContent>
                 </Card>
 
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[13px] text-muted-foreground">
                   Design preview: these controls do not send hardware commands
                   yet — keyboard lighting joins the daemon protocol with the
                   HID import milestone.
@@ -863,7 +863,7 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="flex items-center gap-4 border-t border-border px-6 py-2 text-xs">
+      <footer className="flex items-center gap-4 border-t border-border px-6 py-2 text-[13px]">
         <span className="text-muted-foreground">
           {DEVICE_NAME} ({DEVICE_ID}) via {transport}
         </span>
@@ -873,7 +873,7 @@ export default function Home() {
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1.5 rounded text-xs text-muted-foreground"
+          className="h-7 gap-1.5 rounded text-[13px] text-muted-foreground"
           onClick={refresh}
         >
           <RefreshCw className="size-3" />
@@ -886,7 +886,7 @@ export default function Home() {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-[15px] font-medium uppercase tracking-[0.12em] text-primary">
+    <h2 className="text-[17px] font-medium uppercase tracking-[0.12em] text-primary">
       {children}
     </h2>
   );
@@ -894,7 +894,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function KeyChip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded border border-border px-4 py-1.5 text-sm text-foreground">
+    <span className="rounded border border-border px-4 py-1.5 text-base text-foreground">
       {children}
     </span>
   );
@@ -933,7 +933,7 @@ function ModeTile({
       >
         {icon}
       </span>
-      <span className="text-lg text-foreground">{label}</span>
+      <span className="text-xl text-foreground">{label}</span>
     </motion.button>
   );
 }
@@ -964,8 +964,8 @@ function RadioRow({
         {selected && <span className="size-2.5 rounded-full bg-primary" />}
       </span>
       <span>
-        <span className="block text-[15px] text-foreground">{title}</span>
-        <span className="block text-sm text-muted-foreground">{caption}</span>
+        <span className="block text-[17px] text-foreground">{title}</span>
+        <span className="block text-base text-muted-foreground">{caption}</span>
       </span>
     </button>
   );
@@ -981,7 +981,7 @@ function SliderEnd({
   return (
     <span className="flex flex-col items-center gap-1">
       {icon}
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+      <span className="text-[12px] uppercase tracking-wider text-muted-foreground">
         {children}
       </span>
     </span>
@@ -1018,7 +1018,7 @@ function BubbleSlider({
         className="pointer-events-none absolute top-0 flex flex-col items-center"
         style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
       >
-        <span className="rounded bg-primary px-2 py-0.5 font-mono text-xs font-semibold text-primary-foreground">
+        <span className="rounded bg-primary px-2 py-0.5 font-mono text-[13px] font-semibold text-primary-foreground">
           {value}
           {bubbleSuffix}
         </span>
@@ -1103,7 +1103,7 @@ function BhoSlider({
           style={{ left: `${value}%` }}
         />
       </div>
-      <div className="relative h-6 text-[15px] text-foreground">
+      <div className="relative h-6 text-[17px] text-foreground">
         <span className="absolute left-0">0</span>
         {value > 58 && (
           <span
@@ -1142,7 +1142,7 @@ function LightingPowerTabs({
   return (
     <div className="flex items-center border-b border-border">
       {linked ? (
-        <span className="-mb-px border border-border border-b-card bg-card px-5 py-2.5 text-[15px] text-primary">
+        <span className="-mb-px border border-border border-b-card bg-card px-5 py-2.5 text-[17px] text-primary">
           Plugged In&ensp;/ On Battery
         </span>
       ) : (
@@ -1155,7 +1155,7 @@ function LightingPowerTabs({
           <button
             key={tabValue}
             onClick={() => onChange(tabValue)}
-            className={`-mb-px px-5 py-2.5 text-[15px] transition-colors ${
+            className={`-mb-px px-5 py-2.5 text-[17px] transition-colors ${
               value === tabValue
                 ? "border border-border border-b-card bg-card text-primary"
                 : "border border-transparent bg-secondary text-foreground/90 hover:text-foreground"
@@ -1196,7 +1196,7 @@ function SynapseSelect({
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger
-        className={`h-10 rounded-none border-border bg-secondary px-3 text-[15px] text-foreground focus-visible:border-primary focus-visible:ring-0 data-[state=open]:border-primary dark:bg-secondary dark:hover:bg-secondary ${className}`}
+        className={`h-10 rounded-none border-border bg-secondary px-3 text-[17px] text-foreground focus-visible:border-primary focus-visible:ring-0 data-[state=open]:border-primary dark:bg-secondary dark:hover:bg-secondary ${className}`}
       >
         <SelectValue />
       </SelectTrigger>
@@ -1208,7 +1208,7 @@ function SynapseSelect({
           <SelectItem
             key={option}
             value={option}
-            className="rounded-none py-2 pl-3 pr-8 text-[15px] focus:bg-[#2a2a2a] focus:text-foreground data-[state=checked]:text-primary [&_svg]:hidden"
+            className="rounded-none py-2 pl-3 pr-8 text-[17px] focus:bg-[#2a2a2a] focus:text-foreground data-[state=checked]:text-primary [&_svg]:hidden"
           >
             {option}
           </SelectItem>
