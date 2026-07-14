@@ -14,7 +14,8 @@ This initial milestone deliberately does **not** send HID commands to hardware. 
 
 The Razer Blade 14 (2023) is recognised as USB `1532:029d`. Its declared capabilities are:
 
-- automatic or 2200–5000 RPM manual fan control;
+- automatic or 2000–5400 RPM manual fan control (range read from Synapse on
+  the tested device; see docs/DEVICES.md);
 - Battery Health Optimizer charge limit of 50–80%;
 - CPU/GPU boost modes, disabled unless explicitly opted into as experimental.
 

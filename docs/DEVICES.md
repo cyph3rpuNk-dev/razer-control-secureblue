@@ -18,7 +18,7 @@ treated as verified.
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Fan manual range 2200–5000 RPM | Declared | Not yet verified on hardware. Must be confirmed by reading EC fan state before the write layer is enabled. |
+| Fan manual range 2000–5400 RPM | Declared (vendor UI) | Read off the Razer Synapse fan slider on the maintainer's own Blade 14 (2026-07-14): low 2000, high 5400, default marker at 3800. Supersedes the earlier 2200–5000 assumption. Still pending EC read-back verification before the write layer is enabled. |
 | Battery Health Optimizer 50–80 % | Declared | Matches the range Razer Synapse offers for this model; on-device confirmation pending. |
 | CPU/GPU boost modes | Declared, experimental | Gated behind `--experimental`; stays that way until fan and BHO have real-world mileage. |
 

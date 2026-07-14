@@ -42,9 +42,11 @@ pub const BLADE_14_2023: DeviceCapabilities = DeviceCapabilities {
         vendor_id: RAZER_VENDOR_ID,
         product_id: BLADE_14_2023_PRODUCT_ID,
     },
+    // Source: Razer Synapse fan UI on the maintainer's Blade 14 (2023);
+    // see docs/DEVICES.md. EC read-back verification still pending.
     fan_range: FanRange {
-        min_rpm: 2200,
-        max_rpm: 5000,
+        min_rpm: 2000,
+        max_rpm: 5400,
     },
     supports_battery_health_optimizer: true,
     supports_boost: true,
@@ -177,7 +179,7 @@ mod tests {
         assert!(
             validate_operation(
                 DEVICE,
-                RequestedOperation::Fan(FanMode::Manual(2200)),
+                RequestedOperation::Fan(FanMode::Manual(2000)),
                 false
             )
             .is_ok()
@@ -185,7 +187,7 @@ mod tests {
         assert!(
             validate_operation(
                 DEVICE,
-                RequestedOperation::Fan(FanMode::Manual(5000)),
+                RequestedOperation::Fan(FanMode::Manual(5400)),
                 false
             )
             .is_ok()
@@ -197,7 +199,7 @@ mod tests {
         assert!(matches!(
             validate_operation(
                 DEVICE,
-                RequestedOperation::Fan(FanMode::Manual(2199)),
+                RequestedOperation::Fan(FanMode::Manual(1999)),
                 false
             ),
             Err(PolicyError::FanOutOfRange { .. })
@@ -205,7 +207,7 @@ mod tests {
         assert!(matches!(
             validate_operation(
                 DEVICE,
-                RequestedOperation::Fan(FanMode::Manual(5001)),
+                RequestedOperation::Fan(FanMode::Manual(5401)),
                 false
             ),
             Err(PolicyError::FanOutOfRange { .. })

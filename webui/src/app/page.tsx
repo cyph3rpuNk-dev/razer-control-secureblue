@@ -28,6 +28,7 @@ import {
   BHO_MIN,
   DEVICE_ID,
   DEVICE_NAME,
+  FAN_DEFAULT_RPM,
   FAN_MAX_RPM,
   FAN_MIN_RPM,
   daemonRequest,
@@ -38,7 +39,7 @@ type FanChoice = "auto" | "manual";
 type PowerSource = "pluggedIn" | "onBattery";
 type FanProfile = { choice: FanChoice; rpm: number };
 
-const DEFAULT_RPM = Math.round((FAN_MIN_RPM + FAN_MAX_RPM) / 2 / 100) * 100;
+const DEFAULT_RPM = FAN_DEFAULT_RPM;
 
 const fade = {
   initial: { opacity: 0, y: 8 },
@@ -196,6 +197,7 @@ export default function Home() {
                         max={FAN_MAX_RPM}
                         step={100}
                         value={profile.rpm}
+                        marker={FAN_DEFAULT_RPM}
                         onChange={(rpm) => updateProfile({ rpm }, false)}
                         onCommit={(rpm) => updateProfile({ rpm }, true)}
                       />
@@ -421,6 +423,7 @@ function BubbleSlider({
   max,
   step,
   value,
+  marker,
   onChange,
   onCommit,
 }: {
@@ -428,12 +431,15 @@ function BubbleSlider({
   max: number;
   step: number;
   value: number;
+  marker?: number;
   onChange: (value: number) => void;
   onCommit: (value: number) => void;
 }) {
   const pct = ((value - min) / (max - min)) * 100;
+  const markerPct =
+    marker === undefined ? undefined : ((marker - min) / (max - min)) * 100;
   return (
-    <div className="relative w-full pb-3 pt-9">
+    <div className="relative w-full pb-4 pt-9">
       <div
         className="pointer-events-none absolute top-0 flex flex-col items-center"
         style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
@@ -451,6 +457,12 @@ function BubbleSlider({
         onValueChange={([next]) => onChange(next)}
         onValueCommit={([next]) => onCommit(next)}
       />
+      {markerPct !== undefined && (
+        <span
+          className="pointer-events-none absolute bottom-0 h-0 w-0 border-x-4 border-b-4 border-x-transparent border-b-primary"
+          style={{ left: `${markerPct}%`, transform: "translateX(-50%)" }}
+        />
+      )}
     </div>
   );
 }

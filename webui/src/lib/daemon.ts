@@ -9,8 +9,10 @@
 // Mirrors the Blade 14 (2023) capability table (src/lib.rs).
 export const DEVICE_NAME = "Razer Blade 14 (2023)";
 export const DEVICE_ID = "1532:029d";
-export const FAN_MIN_RPM = 2200;
-export const FAN_MAX_RPM = 5000;
+export const FAN_MIN_RPM = 2000;
+export const FAN_MAX_RPM = 5400;
+// Synapse marks its default/reset position on the slider track.
+export const FAN_DEFAULT_RPM = 3800;
 export const BHO_MIN = 50;
 export const BHO_MAX = 80;
 
