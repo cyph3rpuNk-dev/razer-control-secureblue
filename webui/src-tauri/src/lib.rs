@@ -141,6 +141,20 @@ fn open_kde_settings(module: String) -> Result<String, String> {
     Err("KDE System Settings is Linux-only".to_owned())
 }
 
+/// Physical resolution of the monitor the window is on — immune to display
+/// scaling and to the webview zoom (which skews web-side screen metrics).
+#[tauri::command]
+fn display_resolution(window: tauri::WebviewWindow) -> Result<String, String> {
+    match window.current_monitor() {
+        Ok(Some(monitor)) => {
+            let size = monitor.size();
+            Ok(format!("{} x {}", size.width, size.height))
+        }
+        Ok(None) => Err("no monitor detected".to_owned()),
+        Err(error) => Err(format!("cannot determine monitor: {error}")),
+    }
+}
+
 #[tauri::command]
 fn transport_label() -> &'static str {
     #[cfg(unix)]
@@ -166,7 +180,8 @@ pub fn run() {
             power_source,
             open_polychromatic,
             set_refresh_rate,
-            open_kde_settings
+            open_kde_settings,
+            display_resolution
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

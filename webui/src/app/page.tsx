@@ -42,6 +42,7 @@ import {
   FAN_MIN_RPM,
   daemonRequest,
   detectPowerSource,
+  displayResolution,
   openKdeSettings,
   openPolychromatic,
   setPanelRefreshRate,
@@ -197,12 +198,7 @@ export default function Home() {
     );
 
   useEffect(() => {
-    const dpr = window.devicePixelRatio || 1;
-    setResolution(
-      `${Math.round(window.screen.width * dpr)} x ${Math.round(
-        window.screen.height * dpr,
-      )}`,
-    );
+    displayResolution().then(setResolution);
   }, []);
 
   const applyRefreshRate = async (hz: number) => {

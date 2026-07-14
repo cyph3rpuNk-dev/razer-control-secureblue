@@ -132,6 +132,23 @@ export async function openKdeSettings(
   return "err browser preview cannot open system settings";
 }
 
+export async function displayResolution(): Promise<string> {
+  if (hasTauri()) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      return await invoke<string>("display_resolution");
+    } catch {
+      // fall through to the web approximation
+    }
+  }
+  // Browser preview: approximate from screen metrics (zoom/scaling skew this,
+  // which is why the Tauri path asks the OS instead).
+  const dpr = window.devicePixelRatio || 1;
+  return `${Math.round(window.screen.width * dpr)} x ${Math.round(
+    window.screen.height * dpr,
+  )}`;
+}
+
 export async function transportLabel(): Promise<string> {
   if (hasTauri()) {
     try {
