@@ -69,6 +69,78 @@ fn open_polychromatic() -> Result<String, String> {
     Err("Polychromatic runs on Linux only (OpenRazer)".to_owned())
 }
 
+/// Switch the internal panel's refresh rate via kscreen-doctor (KDE).
+/// Display configuration is compositor territory, not daemon/EC work, so
+/// this lives in the GUI shell and needs no privileges.
+#[tauri::command]
+fn set_refresh_rate(hz: u32) -> Result<String, String> {
+    #[cfg(unix)]
+    {
+        let listing = std::process::Command::new("kscreen-doctor")
+            .arg("-j")
+            .output()
+            .map_err(|error| format!("kscreen-doctor not available (KDE only): {error}"))?;
+        let config: serde_json::Value = serde_json::from_slice(&listing.stdout)
+            .map_err(|error| format!("unexpected kscreen-doctor output: {error}"))?;
+        let outputs = config["outputs"]
+            .as_array()
+            .ok_or("unexpected kscreen-doctor output: no outputs array")?;
+        for output in outputs {
+            let name = output["name"].as_str().unwrap_or("");
+            if !name.starts_with("eDP") {
+                continue;
+            }
+            let current_mode = output["currentModeId"].as_str().unwrap_or("");
+            let size = output["modes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|mode| mode["id"].as_str() == Some(current_mode))
+                .map(|mode| (&mode["size"]["width"], &mode["size"]["height"]))
+                .and_then(|(w, h)| Some((w.as_i64()?, h.as_i64()?)))
+                .ok_or("could not determine the current panel resolution")?;
+            let mode_argument = format!("output.{name}.mode.{}x{}@{hz}", size.0, size.1);
+            let status = std::process::Command::new("kscreen-doctor")
+                .arg(&mode_argument)
+                .status()
+                .map_err(|error| format!("cannot run kscreen-doctor: {error}"))?;
+            return if status.success() {
+                Ok(format!("applied {mode_argument}"))
+            } else {
+                Err(format!("kscreen-doctor rejected {mode_argument}"))
+            };
+        }
+        return Err("no internal (eDP) display found".to_owned());
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = hz;
+        Err("refresh-rate switching targets KDE; use Windows display settings here".to_owned())
+    }
+}
+
+/// Open a KDE System Settings module. Whitelisted so the webview cannot
+/// spawn arbitrary programs.
+#[tauri::command]
+fn open_kde_settings(module: String) -> Result<String, String> {
+    const ALLOWED: [&str; 2] = ["kcm_kscreen", "kcm_colors"];
+    if !ALLOWED.contains(&module.as_str()) {
+        return Err(format!("module {module:?} is not on the allowlist"));
+    }
+    #[cfg(unix)]
+    {
+        return match std::process::Command::new("systemsettings")
+            .arg(&module)
+            .spawn()
+        {
+            Ok(_) => Ok(format!("opened KDE System Settings ({module})")),
+            Err(error) => Err(format!("cannot open systemsettings: {error}")),
+        };
+    }
+    #[cfg(not(unix))]
+    Err("KDE System Settings is Linux-only".to_owned())
+}
+
 #[tauri::command]
 fn transport_label() -> &'static str {
     #[cfg(unix)]
@@ -92,7 +164,9 @@ pub fn run() {
             daemon_request,
             transport_label,
             power_source,
-            open_polychromatic
+            open_polychromatic,
+            set_refresh_rate,
+            open_kde_settings
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

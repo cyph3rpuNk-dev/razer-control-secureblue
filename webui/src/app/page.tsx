@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Fan,
   Gauge,
+  LayoutGrid,
   Link2,
   Lock,
   RefreshCw,
@@ -34,7 +35,9 @@ import {
   FAN_MIN_RPM,
   daemonRequest,
   detectPowerSource,
+  openKdeSettings,
   openPolychromatic,
+  setPanelRefreshRate,
   transportLabel,
 } from "@/lib/daemon";
 
@@ -119,6 +122,12 @@ export default function Home() {
   );
   const [quickEffect, setQuickEffect] = useState("Spectrum Cycling");
 
+  // Display tab: refresh-rate control is real on KDE (kscreen-doctor);
+  // GPU mode stays locked (no safe Linux MUX path for Razer yet).
+  const [resolution, setResolution] = useState("…");
+  const [refreshRate, setRefreshRate] = useState(240);
+  const [sixtyOnBattery, setSixtyOnBattery] = useState(true);
+
   const sysScope: LightScope = sysLinked ? "linked" : sysLightPower;
   const sys = sysLight[sysScope];
   const patchSys = (patch: Partial<(typeof sysLight)["pluggedIn"]>) =>
@@ -180,6 +189,33 @@ export default function Home() {
       "preview only — lighting commands arrive with the HID protocol import",
     );
 
+  useEffect(() => {
+    const dpr = window.devicePixelRatio || 1;
+    setResolution(
+      `${Math.round(window.screen.width * dpr)} x ${Math.round(
+        window.screen.height * dpr,
+      )}`,
+    );
+  }, []);
+
+  const applyRefreshRate = async (hz: number) => {
+    setRefreshRate(hz);
+    setLastResponse(await setPanelRefreshRate(hz));
+  };
+
+  // Battery refresh rate rule: 60 Hz on battery, chosen rate on AC —
+  // applied on transitions while the app runs; daemon-side automation is
+  // diagnostics-milestone work.
+  const displayPowerRef = useRef<PowerSource | null>(null);
+  useEffect(() => {
+    const previous = displayPowerRef.current;
+    displayPowerRef.current = power;
+    if (previous === null || previous === power || !sixtyOnBattery) return;
+    setPanelRefreshRate(power === "onBattery" ? 60 : refreshRate).then(
+      setLastResponse,
+    );
+  }, [power, sixtyOnBattery, refreshRate]);
+
   const applyFan = (next: FanProfile) =>
     send(next.choice === "auto" ? "fan auto" : `fan manual ${next.rpm}`);
 
@@ -198,7 +234,7 @@ export default function Home() {
         </p>
         <Tabs value={tab} onValueChange={setTab} className="items-center">
           <TabsList className="mb-3 mt-2 gap-1 bg-transparent">
-            {["performance", "battery", "lighting"].map((value) => (
+            {["performance", "display", "battery", "lighting"].map((value) => (
               <TabsTrigger
                 key={value}
                 value={value}
@@ -358,6 +394,150 @@ export default function Home() {
                   </p>
                 </CardContent>
               </Card>
+            )}
+
+            {tab === "display" && (
+              <div className="grid items-start gap-6 md:grid-cols-2">
+                <div className="space-y-6">
+                  <Card>
+                    <CardContent className="space-y-5 pt-6">
+                      <div className="flex items-center">
+                        <SectionTitle>Laptop Display</SectionTitle>
+                        <div className="ml-auto flex items-center gap-2">
+                          <KeyChip>FN</KeyChip>
+                          <span className="text-sm text-muted-foreground">
+                            +
+                          </span>
+                          <KeyChip>R</KeyChip>
+                        </div>
+                      </div>
+                      <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
+                        Current Resolution
+                      </p>
+                      <p className="text-[15px] text-muted-foreground">
+                        {resolution}
+                      </p>
+                      <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
+                        Current Refresh Rate
+                      </p>
+                      <div className="flex">
+                        {[60, 240].map((hz) => (
+                          <button
+                            key={hz}
+                            onClick={() => applyRefreshRate(hz)}
+                            className={`border px-6 py-2.5 text-[15px] transition-colors ${
+                              refreshRate === hz
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-secondary text-foreground hover:text-primary"
+                            }`}
+                          >
+                            {hz} Hz
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[13px] text-muted-foreground">
+                        Applied live via kscreen-doctor on KDE Plasma; the
+                        Windows/browser preview reports unsupported.
+                      </p>
+                      <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
+                        Battery Refresh Rate
+                      </p>
+                      <label className="flex items-center gap-3 text-[15px] text-foreground">
+                        <Checkbox
+                          checked={sixtyOnBattery}
+                          onCheckedChange={(checked) =>
+                            setSixtyOnBattery(checked === true)
+                          }
+                          className="size-5"
+                        />
+                        Switch laptop screen refresh rate to 60Hz when on
+                        battery.
+                      </label>
+                      <p className="text-[13px] text-muted-foreground">
+                        Applies on AC/battery transitions while this app is
+                        running; daemon-side automation lands with the
+                        diagnostics milestone.
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="space-y-4 pt-6">
+                      <SectionTitle>Color Profile</SectionTitle>
+                      <select
+                        disabled
+                        className="h-10 w-56 rounded-none border border-border bg-secondary px-2 text-[15px] text-muted-foreground"
+                      >
+                        <option></option>
+                      </select>
+                      <button
+                        onClick={async () =>
+                          setLastResponse(await openKdeSettings("kcm_colors"))
+                        }
+                        className="block text-[15px] text-foreground underline underline-offset-4 hover:text-primary"
+                      >
+                        Open Color Management
+                      </button>
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="space-y-6">
+                  <Card>
+                    <CardContent className="space-y-5 pt-6">
+                      <div className="flex items-center gap-2">
+                        <SectionTitle>GPU Mode</SectionTitle>
+                        <Lock className="size-3.5 text-muted-foreground" />
+                      </div>
+                      <RadioRow
+                        selected
+                        title="NVIDIA® Optimus™"
+                        caption="Integrated and dedicated GPU switching for optimal performance and battery life"
+                        onSelect={() =>
+                          setLastResponse(
+                            "GPU mode is locked — no safe Linux MUX-switching path for Razer laptops yet",
+                          )
+                        }
+                      />
+                      <RadioRow
+                        selected={false}
+                        title="Dedicated GPU only"
+                        caption="Directly drive graphics through the dedicated GPU for lower latency and maximum performance"
+                        onSelect={() =>
+                          setLastResponse(
+                            "GPU mode is locked — no safe Linux MUX-switching path for Razer laptops yet",
+                          )
+                        }
+                      />
+                      <p className="text-[13px] text-muted-foreground">
+                        Locked: Razer GPU MUX switching has no established
+                        safe path on Linux yet.
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="space-y-4 pt-6">
+                      <SectionTitle>External Display</SectionTitle>
+                      <div className="flex items-start gap-4">
+                        <LayoutGrid className="size-10 text-foreground/70" />
+                        <p className="text-[15px] leading-relaxed text-foreground">
+                          To adjust refresh rate when a second monitor is
+                          connected to the HDMI port, use the{" "}
+                          <button
+                            onClick={async () =>
+                              setLastResponse(
+                                await openKdeSettings("kcm_kscreen"),
+                              )
+                            }
+                            className="underline underline-offset-4 hover:text-primary"
+                          >
+                            Display Control Panel
+                          </button>
+                          .
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
             )}
 
             {tab === "battery" && (

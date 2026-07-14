@@ -106,6 +106,32 @@ export async function openPolychromatic(): Promise<string> {
   return "err browser preview cannot launch apps; see polychromatic.app";
 }
 
+export async function setPanelRefreshRate(hz: number): Promise<string> {
+  if (hasTauri()) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      return await invoke<string>("set_refresh_rate", { hz });
+    } catch (error) {
+      return `err ${String(error)}`;
+    }
+  }
+  return "err browser preview cannot change display modes";
+}
+
+export async function openKdeSettings(
+  module: "kcm_kscreen" | "kcm_colors",
+): Promise<string> {
+  if (hasTauri()) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      return await invoke<string>("open_kde_settings", { module });
+    } catch (error) {
+      return `err ${String(error)}`;
+    }
+  }
+  return "err browser preview cannot open system settings";
+}
+
 export async function transportLabel(): Promise<string> {
   if (hasTauri()) {
     try {
