@@ -136,9 +136,9 @@ pub fn validate_operation(
             Err(PolicyError::InvalidChargeLimit(limit))
         }
         RequestedOperation::BatteryHealthOff if device.supports_battery_health_optimizer => Ok(()),
-        RequestedOperation::BatteryHealthOff => Err(PolicyError::FeatureUnsupported(
-            "battery health optimizer",
-        )),
+        RequestedOperation::BatteryHealthOff => {
+            Err(PolicyError::FeatureUnsupported("battery health optimizer"))
+        }
         RequestedOperation::Boost if device.supports_boost && allow_experimental => Ok(()),
         RequestedOperation::Boost => Err(PolicyError::ExperimentalFeatureDisabled("boost control")),
         RequestedOperation::GpuTdpWatts(_) if allow_experimental => Ok(()),
