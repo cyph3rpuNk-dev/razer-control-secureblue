@@ -39,6 +39,8 @@ import {
 
 type FanChoice = "auto" | "manual";
 type PowerSource = "pluggedIn" | "onBattery";
+// Lighting cards can link both power sources to one shared profile.
+type LightScope = PowerSource | "linked";
 type FanProfile = { choice: FanChoice; rpm: number };
 
 const DEFAULT_RPM = FAN_DEFAULT_RPM;
@@ -68,15 +70,18 @@ export default function Home() {
   // (dimmer, quicker-to-switch-off on battery).
   const [sysLightPower, setSysLightPower] = useState<PowerSource>("pluggedIn");
   const [offLightPower, setOffLightPower] = useState<PowerSource>("pluggedIn");
+  const [sysLinked, setSysLinked] = useState(false);
+  const [offLinked, setOffLinked] = useState(false);
   const [sysLight, setSysLight] = useState<
-    Record<PowerSource, { on: boolean; brightness: number; logo: string }>
+    Record<LightScope, { on: boolean; brightness: number; logo: string }>
   >({
     pluggedIn: { on: true, brightness: 40, logo: "Static" },
     onBattery: { on: true, brightness: 20, logo: "Static" },
+    linked: { on: true, brightness: 100, logo: "Static" },
   });
   const [switchOff, setSwitchOff] = useState<
     Record<
-      PowerSource,
+      LightScope,
       {
         displayOff: boolean;
         idle: boolean;
@@ -100,23 +105,32 @@ export default function Home() {
       batteryLevel: false,
       batteryPercent: 20,
     },
+    linked: {
+      displayOff: false,
+      idle: false,
+      idleMinutes: 10,
+      batteryLevel: false,
+      batteryPercent: 20,
+    },
   });
   const [effectsMode, setEffectsMode] = useState<"quick" | "advanced">(
     "quick",
   );
   const [quickEffect, setQuickEffect] = useState("Spectrum Cycling");
 
-  const sys = sysLight[sysLightPower];
+  const sysScope: LightScope = sysLinked ? "linked" : sysLightPower;
+  const sys = sysLight[sysScope];
   const patchSys = (patch: Partial<(typeof sysLight)["pluggedIn"]>) =>
     setSysLight((current) => ({
       ...current,
-      [sysLightPower]: { ...current[sysLightPower], ...patch },
+      [sysScope]: { ...current[sysScope], ...patch },
     }));
-  const off = switchOff[offLightPower];
+  const offScope: LightScope = offLinked ? "linked" : offLightPower;
+  const off = switchOff[offScope];
   const patchOff = (patch: Partial<(typeof switchOff)["pluggedIn"]>) =>
     setSwitchOff((current) => ({
       ...current,
-      [offLightPower]: { ...current[offLightPower], ...patch },
+      [offScope]: { ...current[offScope], ...patch },
     }));
   const [status, setStatus] = useState("");
   const [lastResponse, setLastResponse] = useState("");
@@ -402,7 +416,12 @@ export default function Home() {
                     <SectionTitle>System Lighting</SectionTitle>
                     <LightingPowerTabs
                       value={sysLightPower}
+                      linked={sysLinked}
                       onChange={setSysLightPower}
+                      onToggleLinked={() => {
+                        setSysLinked((current) => !current);
+                        lightingPreview();
+                      }}
                     />
                     <div className="flex items-center gap-3">
                       <h3 className="text-[15px] uppercase tracking-[0.12em] text-primary">
@@ -424,6 +443,7 @@ export default function Home() {
                         max={100}
                         step={1}
                         value={sys.brightness}
+                        bubbleSuffix={sysLinked ? "*" : ""}
                         onChange={(value) => patchSys({ brightness: value })}
                         onCommit={lightingPreview}
                       />
@@ -431,6 +451,11 @@ export default function Home() {
                         <span>OFF</span>
                         <span>BRIGHT</span>
                       </div>
+                      {sysLinked && (
+                        <p className="text-right text-[14px] text-red-500">
+                          *This setting may reduce battery life
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2 pt-1">
                       <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
@@ -459,7 +484,12 @@ export default function Home() {
                     <SectionTitle>Switch Off Lighting</SectionTitle>
                     <LightingPowerTabs
                       value={offLightPower}
+                      linked={offLinked}
                       onChange={setOffLightPower}
+                      onToggleLinked={() => {
+                        setOffLinked((current) => !current);
+                        lightingPreview();
+                      }}
                     />
                     <label className="flex items-center gap-3 text-[15px] text-foreground">
                       <Checkbox
@@ -501,7 +531,7 @@ export default function Home() {
                         <span>60</span>
                       </div>
                     </div>
-                    {offLightPower === "onBattery" && (
+                    {(offLinked || offLightPower === "onBattery") && (
                       <>
                         <label className="flex items-center gap-3 text-[15px] text-foreground">
                           <Checkbox
@@ -512,7 +542,9 @@ export default function Home() {
                             }}
                             className="size-5"
                           />
-                          When battery level falls below (%):
+                          {offLinked
+                            ? "When battery level falls below (%) - On Battery only:"
+                            : "When battery level falls below (%):"}
                         </label>
                         <div
                           className={`px-8 ${
@@ -757,6 +789,7 @@ function BubbleSlider({
   value,
   marker,
   gradient = false,
+  bubbleSuffix = "",
   onChange,
   onCommit,
 }: {
@@ -766,6 +799,7 @@ function BubbleSlider({
   value: number;
   marker?: number;
   gradient?: boolean;
+  bubbleSuffix?: string;
   onChange: (value: number) => void;
   onCommit: (value: number) => void;
 }) {
@@ -780,6 +814,7 @@ function BubbleSlider({
       >
         <span className="rounded bg-primary px-2 py-0.5 font-mono text-xs font-semibold text-primary-foreground">
           {value}
+          {bubbleSuffix}
         </span>
         <span className="h-0 w-0 border-x-4 border-t-4 border-x-transparent border-t-primary" />
       </div>
@@ -885,37 +920,47 @@ function BhoSlider({
 }
 
 // Per-card AC/battery sub-profile tabs used by the lighting cards, with the
-// Synapse link/unlink toggle (linked = one profile for both power sources).
+// Synapse link/unlink toggle. Linked = one shared profile for both power
+// sources, shown as a single merged tab.
 function LightingPowerTabs({
   value,
+  linked,
   onChange,
+  onToggleLinked,
 }: {
   value: PowerSource;
+  linked: boolean;
   onChange: (value: PowerSource) => void;
+  onToggleLinked: () => void;
 }) {
-  const [linked, setLinked] = useState(false);
   return (
     <div className="flex items-center border-b border-border">
-      {(
-        [
-          ["pluggedIn", "Plugged In"],
-          ["onBattery", "On Battery"],
-        ] as const
-      ).map(([tabValue, label]) => (
-        <button
-          key={tabValue}
-          onClick={() => onChange(tabValue)}
-          className={`-mb-px px-5 py-2.5 text-[15px] transition-colors ${
-            value === tabValue
-              ? "border border-border border-b-card bg-card text-primary"
-              : "border border-transparent bg-secondary text-foreground/90 hover:text-foreground"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
+      {linked ? (
+        <span className="-mb-px border border-border border-b-card bg-card px-5 py-2.5 text-[15px] text-primary">
+          Plugged In&ensp;/ On Battery
+        </span>
+      ) : (
+        (
+          [
+            ["pluggedIn", "Plugged In"],
+            ["onBattery", "On Battery"],
+          ] as const
+        ).map(([tabValue, label]) => (
+          <button
+            key={tabValue}
+            onClick={() => onChange(tabValue)}
+            className={`-mb-px px-5 py-2.5 text-[15px] transition-colors ${
+              value === tabValue
+                ? "border border-border border-b-card bg-card text-primary"
+                : "border border-transparent bg-secondary text-foreground/90 hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))
+      )}
       <button
-        onClick={() => setLinked((current) => !current)}
+        onClick={onToggleLinked}
         title={
           linked
             ? "Profiles linked across power sources"
