@@ -13,7 +13,7 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build tooling
-        run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros gh
+        run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros dbus-devel gh
       - uses: actions/checkout@v5
       - name: Build source tarball
         run: |

@@ -1,5 +1,5 @@
 [workspace]
-members = ["gui"]
+members = ["gui", "tray"]
 
 [package]
 name = "razer-control-secureblue"

@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Install libdbus (ksni tray)
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - name: Unit tests
         run: cargo test --locked --workspace
       - name: Formatting
@@ -19,7 +21,7 @@ jobs:
     container: fedora:latest
     steps:
       - name: Install build tooling
-        run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros
+        run: dnf install -y git cargo rust rpm-build rpmdevtools systemd-rpm-macros dbus-devel
       - uses: actions/checkout@v5
       - name: Build source tarball
         run: |
@@ -42,7 +44,9 @@ jobs:
           fi
           grep -v '^#' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules | grep -q 'uaccess'
           test -x /usr/bin/razer-control-gui
+          test -x /usr/bin/razer-control-tray
           test -f /usr/share/applications/razer-control-gui.desktop
+          test -f /usr/share/icons/hicolor/scalable/apps/razer-control-gui.svg
           /usr/bin/razer-control device 1532 029d
           /usr/bin/razer-control validate fan manual 3000
           ! /usr/bin/razer-control validate gpu-tdp 140

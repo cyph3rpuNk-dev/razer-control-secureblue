@@ -1,0 +1,17 @@
+[package]
+name = "razer-control-tray"
+version = "0.1.0"
+edition = "2024"
+description = "StatusNotifierItem tray for razer-control-secureblue (KDE Plasma)"
+license = "GPL-2.0-only"
+
+[[bin]]
+name = "razer-control-tray"
+path = "src/main.rs"
+
+[target.'cfg(unix)'.dependencies]
+ksni = "0.2"
+razer-control-secureblue = { path = ".." }
+
+[lints.rust]
+unsafe_code = "forbid"

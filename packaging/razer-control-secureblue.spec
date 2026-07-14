@@ -13,6 +13,8 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  cargo
 BuildRequires:  rust
 BuildRequires:  systemd-rpm-macros
+# ksni (StatusNotifierItem tray) links libdbus
+BuildRequires:  dbus-devel
 
 %description
 Per-user, socket-activated control daemon for Razer Blade laptops, built for
@@ -33,7 +35,9 @@ cargo test --release --locked --workspace
 %install
 install -Dm0755 target/release/razer-control %{buildroot}%{_bindir}/razer-control
 install -Dm0755 target/release/razer-control-gui %{buildroot}%{_bindir}/razer-control-gui
+install -Dm0755 target/release/razer-control-tray %{buildroot}%{_bindir}/razer-control-tray
 install -Dm0644 packaging/razer-control-gui.desktop %{buildroot}%{_datadir}/applications/razer-control-gui.desktop
+install -Dm0644 packaging/icons/razer-control-gui.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/razer-control-gui.svg
 install -Dm0644 udev/70-razer-control-secureblue.rules %{buildroot}%{_udevrulesdir}/70-razer-control-secureblue.rules
 install -Dm0644 systemd/razer-control.socket %{buildroot}%{_userunitdir}/razer-control.socket
 install -Dm0644 systemd/razer-control.service %{buildroot}%{_userunitdir}/razer-control.service
@@ -49,7 +53,9 @@ install -Dm0644 systemd/razer-control.service %{buildroot}%{_userunitdir}/razer-
 %doc README.md
 %{_bindir}/razer-control
 %{_bindir}/razer-control-gui
+%{_bindir}/razer-control-tray
 %{_datadir}/applications/razer-control-gui.desktop
+%{_datadir}/icons/hicolor/scalable/apps/razer-control-gui.svg
 %{_udevrulesdir}/70-razer-control-secureblue.rules
 %{_userunitdir}/razer-control.socket
 %{_userunitdir}/razer-control.service

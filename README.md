@@ -76,7 +76,13 @@ dry-run backend), which is how it is developed and tested off-device:
 cargo run -p razer-control-gui -- --mock
 ```
 
-On Linux it talks to the real per-user socket by default.
+On Linux it talks to the real per-user socket by default. The styling follows
+Razer Synapse: dark cards, green accents, pill navigation.
+
+`razer-control-tray` is a StatusNotifierItem tray for KDE Plasma (ksni): a
+third thin client whose menu actions each send one IPC line — fan auto, a
+manual preset, charge limit, and launching the GUI. Start it from the
+application menu or add it to Plasma autostart.
 
 ## Installation
 
