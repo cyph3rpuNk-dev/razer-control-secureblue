@@ -248,7 +248,7 @@ export default function Home() {
       </header>
 
       {/* Body */}
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-8">
+      <main className="w-full flex-1 px-7 py-7">
         <AnimatePresence mode="wait">
           <motion.div key={tab} {...fade}>
             {tab === "performance" && (

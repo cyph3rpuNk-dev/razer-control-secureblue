@@ -174,3 +174,15 @@
   font-display: swap;
   src: url(/fonts/selawik/selawkb.woff2) format("woff2");
 }
+
+/* Synapse card metrics: slim page gutter, deep internal card padding.
+   Unlayered so it wins over the utility classes on Card/CardContent. */
+[data-slot="card"] {
+  padding-top: 2.25rem;
+  padding-bottom: 2.25rem;
+}
+[data-slot="card-content"] {
+  padding-left: 3rem;
+  padding-right: 3rem;
+  padding-top: 0;
+}
