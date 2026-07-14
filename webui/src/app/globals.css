@@ -7,7 +7,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  /* Synapse renders in the Windows system font (Segoe UI). Selawik is the
+     OFL-licensed Segoe-metric substitute for Linux, if installed. */
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", Selawik, Roboto,
+    ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
