@@ -27,6 +27,7 @@ pub fn parse_operation(tokens: &[&str]) -> Result<RequestedOperation, String> {
             .parse::<u16>()
             .map(|rpm| RequestedOperation::Fan(FanMode::Manual(rpm)))
             .map_err(|_| "fan RPM must be an integer".to_owned()),
+        ["bho", "off"] => Ok(RequestedOperation::BatteryHealthOff),
         ["bho", limit] => limit
             .parse::<u8>()
             .map(RequestedOperation::BatteryHealthLimit)
@@ -68,6 +69,10 @@ mod tests {
             Ok(Request::Operation(RequestedOperation::BatteryHealthLimit(
                 75
             )))
+        );
+        assert_eq!(
+            parse_request("bho off"),
+            Ok(Request::Operation(RequestedOperation::BatteryHealthOff))
         );
     }
 

@@ -41,6 +41,8 @@ function mockRequest(line: string): string {
     mockFan = `manual:${rpm}`;
     return `ok applied Fan(Manual(${rpm})) via browser-mock backend`;
   }
+  if (tokens[0] === "bho" && tokens[1] === "off")
+    return "ok applied BatteryHealthOff via browser-mock backend";
   if (tokens[0] === "bho") {
     const limit = Number(tokens[1]);
     if (!Number.isInteger(limit) || limit < BHO_MIN || limit > BHO_MAX)

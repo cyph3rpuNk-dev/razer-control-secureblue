@@ -107,6 +107,16 @@ mod tests {
     }
 
     #[test]
+    fn accepts_disabling_battery_health_optimizer() {
+        let mut daemon = daemon(false);
+        assert!(daemon.handle_line("bho off").starts_with("ok"));
+        assert_eq!(
+            daemon.backend().applied,
+            vec![RequestedOperation::BatteryHealthOff]
+        );
+    }
+
+    #[test]
     fn shutdown_sends_nothing_when_fans_are_automatic() {
         let mut daemon = daemon(false);
         assert!(daemon.handle_line("bho 80").starts_with("ok"));

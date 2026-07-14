@@ -66,6 +66,7 @@ pub enum FanMode {
 pub enum RequestedOperation {
     Fan(FanMode),
     BatteryHealthLimit(u8),
+    BatteryHealthOff,
     Boost,
     GpuTdpWatts(u16),
 }
@@ -75,6 +76,7 @@ pub enum PolicyError {
     UnsupportedDevice(DeviceId),
     FanOutOfRange { requested: u16, range: FanRange },
     InvalidChargeLimit(u8),
+    FeatureUnsupported(&'static str),
     ExperimentalFeatureDisabled(&'static str),
 }
 
@@ -95,6 +97,9 @@ impl std::fmt::Display for PolicyError {
                 f,
                 "battery health limit {limit}% is invalid; choose a value from 50% through 80%",
             ),
+            Self::FeatureUnsupported(feature) => {
+                write!(f, "{feature} is not supported on this device")
+            }
             Self::ExperimentalFeatureDisabled(feature) => {
                 write!(f, "{feature} is experimental and requires explicit opt-in",)
             }
@@ -130,6 +135,10 @@ pub fn validate_operation(
         RequestedOperation::BatteryHealthLimit(limit) => {
             Err(PolicyError::InvalidChargeLimit(limit))
         }
+        RequestedOperation::BatteryHealthOff if device.supports_battery_health_optimizer => Ok(()),
+        RequestedOperation::BatteryHealthOff => Err(PolicyError::FeatureUnsupported(
+            "battery health optimizer",
+        )),
         RequestedOperation::Boost if device.supports_boost && allow_experimental => Ok(()),
         RequestedOperation::Boost => Err(PolicyError::ExperimentalFeatureDisabled("boost control")),
         RequestedOperation::GpuTdpWatts(_) if allow_experimental => Ok(()),

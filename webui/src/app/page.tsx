@@ -7,7 +7,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  BatteryCharging,
   Fan,
   Gauge,
   Lightbulb,
@@ -57,6 +56,9 @@ export default function Home() {
     onBattery: { choice: "auto", rpm: DEFAULT_RPM },
   });
   const [bho, setBho] = useState(80);
+  // Synapse default: BHO on, and it stays on across AC transitions until
+  // the user turns it off themselves.
+  const [bhoEnabled, setBhoEnabled] = useState(true);
   const [status, setStatus] = useState("");
   const [lastResponse, setLastResponse] = useState("");
   const [transport, setTransport] = useState("…");
@@ -281,28 +283,49 @@ export default function Home() {
 
             {tab === "battery" && (
               <Card>
-                <CardContent className="space-y-6 pt-6">
-                  <div className="flex items-center gap-2">
+                <CardContent className="space-y-5 pt-6">
+                  <div className="flex items-center gap-3">
                     <SectionTitle>Battery Health Optimizer</SectionTitle>
-                    <BatteryCharging className="size-4 text-primary" />
+                    <Switch
+                      checked={bhoEnabled}
+                      onCheckedChange={(checked) => {
+                        setBhoEnabled(checked);
+                        send(checked ? `bho ${bho}` : "bho off");
+                      }}
+                    />
                   </div>
-                  <p className="text-sm text-foreground">
+                  <p className="text-[15px] text-foreground">
                     Battery will stop charging when it has reached the limit
                     (%).
                   </p>
-                  <div className="flex items-end gap-4">
-                    <BubbleSlider
-                      min={BHO_MIN}
-                      max={BHO_MAX}
-                      step={1}
+                  <div
+                    className={`space-y-6 ${
+                      bhoEnabled ? "" : "pointer-events-none opacity-40"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <select
+                        value={bho}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          setBho(value);
+                          send(`bho ${value}`);
+                        }}
+                        className="h-10 w-20 rounded-none border border-border bg-secondary px-2 text-[15px] text-foreground focus:border-primary focus:outline-none"
+                      >
+                        {[50, 55, 60, 65, 70, 75, 80].map((value) => (
+                          <option key={value} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[15px] text-foreground">%</span>
+                    </div>
+                    <BhoSlider
                       value={bho}
                       onChange={setBho}
                       onCommit={(value) => send(`bho ${value}`)}
                     />
-                  </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{BHO_MIN}</span>
-                    <span>{BHO_MAX}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -508,6 +531,81 @@ function BubbleSlider({
           style={{ left: `${markerPct}%`, transform: "translateX(-50%)" }}
         />
       )}
+    </div>
+  );
+}
+
+// Synapse's BHO slider: the track spans 0-100 so the user sees where the
+// limit sits on the whole charge scale, the green fill runs from 50 to the
+// thumb, but only 50-80 in steps of 5 is selectable — the daemon rejects
+// anything else regardless.
+function BhoSlider({
+  value,
+  onChange,
+  onCommit,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  onCommit: (value: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  const valueFromPointer = (clientX: number) => {
+    const track = trackRef.current;
+    if (!track) return value;
+    const rect = track.getBoundingClientRect();
+    const pct = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+    const snapped = Math.round((pct * 100) / 5) * 5;
+    return Math.min(BHO_MAX, Math.max(BHO_MIN, snapped));
+  };
+
+  return (
+    <div className="select-none">
+      <div
+        ref={trackRef}
+        className="relative h-6 cursor-pointer touch-none"
+        onPointerDown={(event) => {
+          dragging.current = true;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          onChange(valueFromPointer(event.clientX));
+        }}
+        onPointerMove={(event) => {
+          if (dragging.current) onChange(valueFromPointer(event.clientX));
+        }}
+        onPointerUp={(event) => {
+          dragging.current = false;
+          onCommit(valueFromPointer(event.clientX));
+        }}
+      >
+        <div className="absolute top-1/2 h-1.5 w-full -translate-y-1/2 rounded-full bg-muted" />
+        <div
+          className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-primary"
+          style={{ left: "50%", width: `${value - 50}%` }}
+        />
+        <div
+          className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+          style={{ left: `${value}%` }}
+        />
+      </div>
+      <div className="relative h-6 text-[15px] text-foreground">
+        <span className="absolute left-0">0</span>
+        {value > 58 && (
+          <span
+            className="absolute -translate-x-1/2"
+            style={{ left: "50%" }}
+          >
+            50
+          </span>
+        )}
+        <span
+          className="absolute -translate-x-1/2"
+          style={{ left: `${value}%` }}
+        >
+          {value}
+        </span>
+        <span className="absolute right-0">100</span>
+      </div>
     </div>
   );
 }
