@@ -137,7 +137,7 @@ export default function Home() {
                           onClick={() => setPower(value)}
                           className={`-mb-px px-5 py-2 text-sm transition-colors ${
                             power === value
-                              ? "border border-border border-b-background bg-secondary text-foreground"
+                              ? "border border-border border-b-background bg-secondary text-primary"
                               : "border border-transparent text-muted-foreground hover:text-foreground"
                           }`}
                         >
