@@ -149,3 +149,28 @@
   --input: #2a2a2a;
   --ring: #44d62c;
 }
+
+/* Selawik (SIL OFL, microsoft/Selawik): metric-compatible Segoe UI
+   substitute so Linux renders with the same layout as Windows. Browsers
+   fetch these only when Segoe UI is absent from the system. */
+@font-face {
+  font-family: Selawik;
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url(/fonts/selawik/selawk.woff2) format("woff2");
+}
+@font-face {
+  font-family: Selawik;
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url(/fonts/selawik/selawksb.woff2) format("woff2");
+}
+@font-face {
+  font-family: Selawik;
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url(/fonts/selawik/selawkb.woff2) format("woff2");
+}
