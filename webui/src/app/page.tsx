@@ -397,20 +397,16 @@ export default function Home() {
             )}
 
             {tab === "display" && (
-              <div className="grid items-start gap-6 md:grid-cols-2">
-                <div className="space-y-6">
-                  <Card>
-                    <CardContent className="space-y-5 pt-6">
-                      <div className="flex items-center">
-                        <SectionTitle>Laptop Display</SectionTitle>
-                        <div className="ml-auto flex items-center gap-2">
-                          <KeyChip>FN</KeyChip>
-                          <span className="text-sm text-muted-foreground">
-                            +
-                          </span>
-                          <KeyChip>R</KeyChip>
-                        </div>
-                      </div>
+              <Card>
+                <CardContent className="space-y-5 pt-6">
+                  <div className="flex items-center">
+                    <SectionTitle>Laptop Display</SectionTitle>
+                    <div className="ml-auto flex items-center gap-2">
+                      <KeyChip>FN</KeyChip>
+                      <span className="text-sm text-muted-foreground">+</span>
+                      <KeyChip>R</KeyChip>
+                    </div>
+                  </div>
                       <p className="text-[15px] uppercase tracking-[0.08em] text-foreground">
                         Current Resolution
                       </p>
@@ -458,11 +454,8 @@ export default function Home() {
                         running; daemon-side automation lands with the
                         diagnostics milestone.
                       </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="space-y-4 pt-6">
-                      <SectionTitle>Color Profile</SectionTitle>
+                  <Separator />
+                  <SectionTitle>Color Profile</SectionTitle>
                       <select
                         disabled
                         className="h-10 w-56 rounded-none border border-border bg-secondary px-2 text-[15px] text-muted-foreground"
@@ -477,16 +470,11 @@ export default function Home() {
                       >
                         Open Color Management
                       </button>
-                    </CardContent>
-                  </Card>
-                </div>
-                <div className="space-y-6">
-                  <Card>
-                    <CardContent className="space-y-5 pt-6">
-                      <div className="flex items-center gap-2">
-                        <SectionTitle>GPU Mode</SectionTitle>
-                        <Lock className="size-3.5 text-muted-foreground" />
-                      </div>
+                  <Separator />
+                  <div className="flex items-center gap-2">
+                    <SectionTitle>GPU Mode</SectionTitle>
+                    <Lock className="size-3.5 text-muted-foreground" />
+                  </div>
                       <RadioRow
                         selected
                         title="NVIDIA® Optimus™"
@@ -511,11 +499,8 @@ export default function Home() {
                         Locked: Razer GPU MUX switching has no established
                         safe path on Linux yet.
                       </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="space-y-4 pt-6">
-                      <SectionTitle>External Display</SectionTitle>
+                  <Separator />
+                  <SectionTitle>External Display</SectionTitle>
                       <div className="flex items-start gap-4">
                         <LayoutGrid className="size-10 text-foreground/70" />
                         <p className="text-[15px] leading-relaxed text-foreground">
@@ -532,12 +517,10 @@ export default function Home() {
                             Display Control Panel
                           </button>
                           .
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {tab === "battery" && (
