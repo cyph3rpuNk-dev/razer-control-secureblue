@@ -1,5 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect x="2" y="2" width="60" height="60" rx="14" fill="#101010"/>
-  <circle cx="32" cy="32" r="19" fill="none" stroke="#44d62c" stroke-width="5"/>
-  <circle cx="32" cy="32" r="7" fill="#44d62c"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 208 208">
+  <circle cx="104" cy="104" r="98" fill="#44d62c"/>
+  <!-- laptop: black body, green screen -->
+  <rect x="54" y="52" width="100" height="66" rx="8" fill="#0d0d0d"/>
+  <rect x="64" y="61" width="80" height="48" rx="3" fill="#44d62c"/>
+  <path d="M 44 142 L 58 122 h 92 l 14 20 q 2 4 -4 4 h -112 q -6 0 -4 -4 z" fill="#0d0d0d"/>
 </svg>
