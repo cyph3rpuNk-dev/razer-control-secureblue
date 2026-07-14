@@ -97,7 +97,7 @@ export default function Home() {
               <TabsTrigger
                 key={value}
                 value={value}
-                className="rounded-full px-5 text-xs uppercase tracking-wider text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                className="rounded-full px-5 text-xs uppercase tracking-wider text-muted-foreground transition-colors data-active:bg-primary data-active:text-primary-foreground dark:data-active:border-transparent dark:data-active:bg-primary dark:data-active:text-primary-foreground"
               >
                 {value}
               </TabsTrigger>
