@@ -51,6 +51,24 @@ fn power_source() -> &'static str {
     "unknown"
 }
 
+/// Launch Polychromatic if the user installed it (OpenRazer frontend).
+/// Deliberately optional: OpenRazer needs DKMS kernel modules, which this
+/// project neither ships nor recommends on Secureblue.
+#[tauri::command]
+fn open_polychromatic() -> Result<String, String> {
+    #[cfg(unix)]
+    {
+        return match std::process::Command::new("polychromatic-controller").spawn() {
+            Ok(_) => Ok("launched Polychromatic".to_owned()),
+            Err(error) => Err(format!(
+                "Polychromatic not found ({error}); see polychromatic.app"
+            )),
+        };
+    }
+    #[cfg(not(unix))]
+    Err("Polychromatic runs on Linux only (OpenRazer)".to_owned())
+}
+
 #[tauri::command]
 fn transport_label() -> &'static str {
     #[cfg(unix)]
@@ -73,7 +91,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             daemon_request,
             transport_label,
-            power_source
+            power_source,
+            open_polychromatic
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

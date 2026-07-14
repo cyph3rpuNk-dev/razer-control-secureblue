@@ -94,6 +94,18 @@ export async function detectPowerSource(): Promise<DetectedPowerSource> {
   return "unknown";
 }
 
+export async function openPolychromatic(): Promise<string> {
+  if (hasTauri()) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      return await invoke<string>("open_polychromatic");
+    } catch (error) {
+      return `err ${String(error)}`;
+    }
+  }
+  return "err browser preview cannot launch apps; see polychromatic.app";
+}
+
 export async function transportLabel(): Promise<string> {
   if (hasTauri()) {
     try {

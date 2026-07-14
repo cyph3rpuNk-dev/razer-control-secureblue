@@ -34,6 +34,7 @@ import {
   FAN_MIN_RPM,
   daemonRequest,
   detectPowerSource,
+  openPolychromatic,
   transportLabel,
 } from "@/lib/daemon";
 
@@ -637,10 +638,46 @@ export default function Home() {
                         </div>
                       </>
                     ) : (
-                      <p className="text-[15px] text-muted-foreground">
-                        Advanced Chroma layering arrives with the HID protocol
-                        import.
-                      </p>
+                      <>
+                        {/* Layout mirrors Synapse's Chroma App panel; the
+                            artwork is ours (Razer's banner is copyrighted). */}
+                        <div className="relative overflow-hidden rounded-md">
+                          <div className="h-64 w-full bg-[linear-gradient(115deg,#e11d1d,#e17a1d_18%,#cfd41c_34%,#1dc94f_50%,#1d9fd4_66%,#7a1dd4_82%,#d41d9f)] opacity-80" />
+                          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.55))]" />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-5">
+                            <div className="flex size-28 flex-col items-center justify-center rounded-full border-4 border-transparent bg-black text-center [background:linear-gradient(#000,#000)_padding-box,conic-gradient(#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)_border-box]">
+                              <span className="text-sm font-semibold leading-tight text-white">
+                                POLY
+                                <br />
+                                CHROMATIC
+                              </span>
+                              <span className="text-[10px] tracking-widest text-muted-foreground">
+                                RGB
+                              </span>
+                            </div>
+                            <button
+                              onClick={async () =>
+                                setLastResponse(await openPolychromatic())
+                              }
+                              className="bg-primary px-6 py-2.5 text-[15px] font-medium uppercase tracking-wide text-primary-foreground hover:bg-primary/90"
+                            >
+                              Open Polychromatic
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[15px] text-foreground">
+                          Get advanced per-key effects with Polychromatic, the
+                          RGB suite for GNU/Linux powered by OpenRazer — if you
+                          have installed it yourself.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Heads-up: OpenRazer requires DKMS kernel modules,
+                          which Secureblue&apos;s hardening discourages and this
+                          project deliberately does not ship. Native advanced
+                          effects over plain hidraw are on the roadmap after
+                          the protocol import.
+                        </p>
+                      </>
                     )}
                   </CardContent>
                 </Card>
