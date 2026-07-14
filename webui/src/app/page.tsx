@@ -397,6 +397,7 @@ export default function Home() {
             )}
 
             {tab === "display" && (
+              <div className="space-y-6">
               <Card>
                 <CardContent className="space-y-5 pt-6">
                   <div className="flex items-center">
@@ -454,7 +455,10 @@ export default function Home() {
                         running; daemon-side automation lands with the
                         diagnostics milestone.
                       </p>
-                  <Separator />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="space-y-4 pt-6">
                   <SectionTitle>Color Profile</SectionTitle>
                       <select
                         disabled
@@ -470,7 +474,10 @@ export default function Home() {
                       >
                         Open Color Management
                       </button>
-                  <Separator />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="space-y-5 pt-6">
                   <div className="flex items-center gap-2">
                     <SectionTitle>GPU Mode</SectionTitle>
                     <Lock className="size-3.5 text-muted-foreground" />
@@ -499,7 +506,10 @@ export default function Home() {
                         Locked: Razer GPU MUX switching has no established
                         safe path on Linux yet.
                       </p>
-                  <Separator />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="space-y-4 pt-6">
                   <SectionTitle>External Display</SectionTitle>
                       <div className="flex items-start gap-4">
                         <LayoutGrid className="size-10 text-foreground/70" />
@@ -521,6 +531,7 @@ export default function Home() {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             )}
 
             {tab === "battery" && (
