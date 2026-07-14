@@ -12,7 +12,9 @@ jobs:
       - name: Install libdbus (ksni tray)
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - name: Unit tests
-        run: cargo test --locked --workspace
+        # razer-control-desktop (Tauri) is excluded until it ships: compiling
+        # it on Linux needs webkit2gtk and it is not in the RPM yet.
+        run: cargo test --locked --workspace --exclude razer-control-desktop
       - name: Formatting
         run: cargo fmt --all --check
 

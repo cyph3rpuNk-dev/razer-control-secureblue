@@ -27,10 +27,10 @@ dry-run daemon; it sends no hardware commands.
 %autosetup
 
 %build
-cargo build --release --locked --workspace
+cargo build --release --locked -p razer-control-secureblue -p razer-control-gui -p razer-control-tray
 
 %check
-cargo test --release --locked --workspace
+cargo test --release --locked -p razer-control-secureblue -p razer-control-gui -p razer-control-tray
 
 %install
 install -Dm0755 target/release/razer-control %{buildroot}%{_bindir}/razer-control

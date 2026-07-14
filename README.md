@@ -3,7 +3,7 @@
 An Atomic-Linux-oriented rebuild of Razer Blade control foundations.
 
 Licensed **GPL-2.0-only**. The project plans to derive its HID protocol layer
-from [razer-control-revived](https://github.com/cyph3rpuNk-dev/razer-control-revived)
+from [razer-control-revived](https://github.com/encomjp/razer-control-revived)
 (GPL-2.0), which in turn builds on the razer-laptop-control lineage; adopting
 its license up front keeps that import clean. The code currently in this
 repository is original to this project.
