@@ -176,6 +176,12 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            // Match Synapse's UI density: the webview otherwise applies the
+            // OS display scaling (150% on the Blade) to our full-size CSS.
+            use tauri::Manager;
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_zoom(0.85);
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
