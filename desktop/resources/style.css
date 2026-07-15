@@ -1,0 +1,17 @@
+/* Synapse-flavoured accent for libadwaita: override the semantic accent colors
+ * (the supported theming path short of the libadwaita 1.6 runtime API) to Razer
+ * green, and lift the card contrast a touch on the forced-dark scheme. */
+
+@define-color accent_bg_color #2f9e2a;
+@define-color accent_fg_color #ffffff;
+@define-color accent_color #55d647;
+
+.suggested-action {
+  font-weight: 700;
+}
+
+/* Slightly brighter cards than default adw-dark, closer to Synapse's panels. */
+preferencesgroup > box > .background,
+.card {
+  background-color: alpha(#ffffff, 0.04);
+}

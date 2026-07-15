@@ -1,7 +1,6 @@
-# CI-oriented spec: builds with network access for crates.io, the npm registry,
-# and (via next/font/google) Google's font CDN.  An offline COPR build needs all
-# three vendored; see docs/INSTALL.md, Path C.  Tracked for the packaging
-# milestone.
+# CI-oriented spec: builds with network access for crates.io.  An offline COPR
+# build needs the crate sources vendored (cargo vendor / rust2rpm); see
+# docs/INSTALL.md, Path C.  Tracked for the packaging milestone.
 
 Name:           razer-control-secureblue
 Version:        0.1.0
@@ -17,17 +16,11 @@ BuildRequires:  gcc
 BuildRequires:  systemd-rpm-macros
 # ksni (StatusNotifierItem tray) links libdbus
 BuildRequires:  dbus-devel
-# Tauri desktop shell: WebKitGTK webview and its GTK stack
-BuildRequires:  webkit2gtk4.1-devel
-BuildRequires:  gtk3-devel
-BuildRequires:  librsvg2-devel
-BuildRequires:  openssl-devel
-# The Tauri binary embeds the Next.js static export, so the frontend is built
-# here, before cargo compiles the shell around it.
-BuildRequires:  nodejs
-BuildRequires:  nodejs-npm
-
-Requires:       webkit2gtk4.1
+# Native GTK4/libadwaita desktop app (replaces the Tauri/WebKitGTK shell, which
+# does not sit well on secureblue's hardened runtime). libadwaita-devel pulls in
+# gtk4-devel.
+BuildRequires:  gtk4-devel
+BuildRequires:  libadwaita-devel
 
 %description
 Per-user, socket-activated control daemon for Razer Blade laptops, built for
@@ -40,13 +33,6 @@ dry-run daemon; it sends no hardware commands.
 %autosetup
 
 %build
-export NEXT_TELEMETRY_DISABLED=1
-npm install -g pnpm@11
-pushd webui
-pnpm install --frozen-lockfile
-# Produces webui/out, which tauri::generate_context! embeds into the binary.
-pnpm build
-popd
 cargo build --release --locked \
   -p razer-control-secureblue -p razer-control-tray -p razer-control-desktop
 
@@ -85,4 +71,5 @@ install -Dm0644 systemd/razer-control.service %{buildroot}%{_userunitdir}/razer-
 %changelog
 * Tue Jul 14 2026 razer-control-secureblue maintainers <llmplayerx@gmail.com> - 0.1.0-1
 - Initial package: policy layer, dry-run socket-activated user daemon,
-  uaccess udev rule, systemd user units, KDE tray, and the Tauri desktop app.
+  uaccess udev rule, systemd user units, KDE tray, and the native
+  GTK4/libadwaita desktop app.
