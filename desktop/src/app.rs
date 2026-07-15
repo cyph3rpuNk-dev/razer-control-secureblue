@@ -1,8 +1,9 @@
 //! GTK4/libadwaita UI. Linux-only; see `main.rs` for the platform gate.
 
+// adw::prelude re-exports gtk::prelude, so this covers both toolkits' traits.
 use adw::prelude::*;
+use gtk::glib;
 use gtk::glib::clone;
-use gtk::prelude::*;
 
 const APP_ID: &str = "dev.cyph3rpunk.razer-control";
 

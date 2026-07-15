@@ -18,7 +18,10 @@ starship-battery = "0.10"
 # workspace build there still succeeds; the real UI is developed on Linux.
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { package = "gtk4", version = "0.9" }
-adw = { package = "libadwaita", version = "0.7" }
+# v1_4 pulls in ToolbarView + SwitchRow (and the v1_1 header-suffix API).
+# Ubuntu 24.04 ships libadwaita 1.5 and Fedora 44 ships 1.7, so this builds
+# on both CI runners.
+adw = { package = "libadwaita", version = "0.7", features = ["v1_4"] }
 
 [lints.rust]
 unsafe_code = "forbid"
