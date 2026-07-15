@@ -1,9 +1,5 @@
 [workspace]
 members = ["tray", "desktop"]
-# The Tauri shell is benched: WebKitGTK is a poor fit for secureblue's hardened
-# runtime (bwrap sandbox + hardened_malloc). Replaced by the native GTK4 crate
-# in desktop/. Files kept for reference until the GTK app is verified on-device.
-exclude = ["webui/src-tauri"]
 
 [package]
 name = "razer-control-secureblue"

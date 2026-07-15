@@ -67,26 +67,27 @@ razer-control ctl fan auto
 
 ## Control GUI
 
-`razer-control-desktop` (in [webui/](webui/)) is a Tauri shell around a
-Next.js UI, and it is a pure IPC client: every button press becomes one line
-of the daemon protocol, and all safety decisions stay in the daemon. The
-styling follows Razer Synapse: dark cards, green accents, pill navigation.
+`razer-control-desktop` (in [desktop/](desktop/)) is a native
+GTK4/libadwaita app and a pure IPC client: every control sends one line of
+the daemon protocol, and all safety decisions stay in the daemon. It uses
+GTK4 rather than a webview because WebKitGTK — which Tauri mandates on Linux
+— sits badly on Secureblue's hardened runtime (its bwrap web-process sandbox
+breaks on atomic/hardened layouts and collides with hardened_malloc); the
+GUI that already works there, razer-control-revived, is GTK4/libadwaita too.
 
-On Linux it talks to the real per-user socket by default. Setting
-`RAZER_CONTROL_MOCK=1` — and any non-Linux platform, which is how the UI is
-developed on Windows — swaps the transport for an in-process instance of the
-identical daemon core with the dry-run backend, so no hardware is touched:
+GTK4/libadwaita are Linux-only, so the crate builds the real UI only on
+Linux and is a stub elsewhere — core and daemon work still develop on
+Windows, but the GUI runs on the Linux/Secureblue side. It talks to the real
+per-user socket by default; `RAZER_CONTROL_MOCK=1` swaps the transport for an
+in-process copy of the identical daemon core with the dry-run backend:
 
 ```bash
-cd webui
-pnpm install
-RAZER_CONTROL_MOCK=1 pnpm tauri dev
+RAZER_CONTROL_MOCK=1 cargo run -p razer-control-desktop
 ```
 
-The Rust side of the shell holds no policy. Beyond forwarding IPC lines it
-only does desktop-integration work that needs no privileges: reading the
-power source, switching the panel refresh rate via `kscreen-doctor`, and
-opening an allowlisted KDE System Settings module.
+The app holds no policy. Beyond forwarding IPC lines it reads the power
+source for display only; privileged desktop integration (refresh-rate
+switching, KDE settings) remains a tracked follow-up.
 
 `razer-control-tray` is a StatusNotifierItem tray for KDE Plasma (ksni): a
 third thin client whose menu actions each send one IPC line — fan auto, a
