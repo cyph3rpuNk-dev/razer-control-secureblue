@@ -115,6 +115,7 @@ fn build_cooling_group(
 
     let fan_combo = adw::ComboRow::builder().title("Fan mode").build();
     fan_combo.set_model(Some(&gtk::StringList::new(&["Automatic", "Manual"])));
+    apply_synapse_option_factory(&fan_combo);
 
     let rpm_scale = value_scale(FAN_MIN_RPM, FAN_MAX_RPM, 50.0, 3000.0);
     let rpm_box = labelled_scale("Manual speed (RPM)", &rpm_scale);
@@ -232,6 +233,76 @@ fn build_status_group() -> (
     ));
 
     (group, status_row, power_row, transport_row)
+}
+
+/// Synapse dropdowns mark the chosen option with a green row, not a
+/// checkmark.  GTK's `:selected` in a ComboRow popover tracks the list
+/// cursor rather than the chosen value (verified with a widget-tree dump),
+/// so a stylesheet alone cannot express this: instead the popover gets a
+/// custom factory that tags the chosen row with the `chosen-option` class,
+/// which the stylesheet paints green.
+fn apply_synapse_option_factory(combo: &adw::ComboRow) {
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, object| {
+        let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        let label = gtk::Label::builder()
+            .xalign(0.0)
+            .css_classes(["option-label"])
+            .build();
+        item.set_child(Some(&label));
+    });
+    let combo_weak = combo.downgrade();
+    factory.connect_bind(move |_, object| {
+        let Some(item) = object.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        let Some(option) = item.item().and_downcast::<gtk::StringObject>() else {
+            return;
+        };
+        let Some(label) = item.child().and_downcast::<gtk::Label>() else {
+            return;
+        };
+        label.set_text(&option.string());
+        if let Some(combo) = combo_weak.upgrade() {
+            mark_option_row(&label, combo.selected() == item.position());
+        }
+    });
+    combo.set_list_factory(Some(&factory));
+    // Rows stay realised between popover openings, so re-tag them whenever
+    // the choice changes.
+    combo.connect_selected_notify(resync_option_rows);
+}
+
+fn mark_option_row(label: &gtk::Label, chosen: bool) {
+    if let Some(row) = label.parent() {
+        if chosen {
+            row.add_css_class("chosen-option");
+        } else {
+            row.remove_css_class("chosen-option");
+        }
+    }
+}
+
+fn resync_option_rows(combo: &adw::ComboRow) {
+    let chosen = combo
+        .selected_item()
+        .and_downcast::<gtk::StringObject>()
+        .map(|object| object.string());
+    let mut stack = vec![combo.clone().upcast::<gtk::Widget>()];
+    while let Some(widget) = stack.pop() {
+        if let Some(label) = widget.downcast_ref::<gtk::Label>()
+            && label.has_css_class("option-label")
+        {
+            mark_option_row(label, chosen.as_deref() == Some(label.text().as_str()));
+        }
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            stack.push(current.clone());
+            child = current.next_sibling();
+        }
+    }
 }
 
 fn value_scale(min: f64, max: f64, step: f64, initial: f64) -> gtk::Scale {

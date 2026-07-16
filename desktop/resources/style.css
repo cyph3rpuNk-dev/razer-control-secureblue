@@ -30,13 +30,21 @@ preferencesgroup list.boxed-list > row {
   padding-bottom: 10px;
 }
 
-/* Synapse dropdowns: near-black list, grey hover, green selected option.
- * (Ported decision from the webui; selectors may need on-device tuning.) */
-popover listview > row:hover {
+/* Synapse dropdowns: near-black list, grey hover, green chosen option.
+ * The chosen row is tagged `chosen-option` by the app's popover factory
+ * (see apply_synapse_option_factory); GTK's own :selected tracks the list
+ * cursor in these popovers, not the chosen value, so it stays unstyled
+ * and the cursor/hover highlight is a neutral grey. */
+popover listview row:hover,
+popover listview row:selected {
   background-color: alpha(#ffffff, 0.06);
 }
-popover listview > row:selected {
+popover listview row.chosen-option,
+popover listview row.chosen-option:hover,
+popover listview row.chosen-option:selected {
   background-color: @accent_bg_color;
+}
+popover listview row.chosen-option label {
   color: @accent_fg_color;
 }
 
