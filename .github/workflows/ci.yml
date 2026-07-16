@@ -53,10 +53,10 @@ jobs:
           grep -v '^#' /usr/lib/udev/rules.d/70-razer-control-secureblue.rules | grep -q 'uaccess'
           test -x /usr/bin/razer-control-desktop
           test -x /usr/bin/razer-control-tray
-          test -f /usr/share/applications/razer-control-desktop.desktop
+          test -f /usr/share/applications/dev.cyph3rpunk.razer-control.desktop
           test -f /usr/share/icons/hicolor/scalable/apps/razer-control-desktop.svg
           # The desktop entry must point at the binary the RPM actually ships.
-          grep -q '^Exec=razer-control-desktop$' /usr/share/applications/razer-control-desktop.desktop
+          grep -q '^Exec=razer-control-desktop$' /usr/share/applications/dev.cyph3rpunk.razer-control.desktop
           /usr/bin/razer-control device 1532 029d
           /usr/bin/razer-control validate fan manual 3000
           ! /usr/bin/razer-control validate gpu-tdp 140

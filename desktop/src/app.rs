@@ -39,7 +39,17 @@ fn load_css() {
             &provider,
             gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
+
+        // Installed builds find the icon in hicolor; development builds
+        // (cargo run) get the repo's packaging copy added to the search
+        // path, so the window and taskbar icon work in both.
+        let icon_theme = gtk::IconTheme::for_display(&display);
+        let dev_icons = concat!(env!("CARGO_MANIFEST_DIR"), "/../packaging/icons");
+        if std::path::Path::new(dev_icons).is_dir() {
+            icon_theme.add_search_path(dev_icons);
+        }
     }
+    gtk::Window::set_default_icon_name("razer-control-desktop");
 }
 
 fn build_ui(app: &adw::Application) {
@@ -84,17 +94,6 @@ fn build_ui(app: &adw::Application) {
         sidebar_list.append(&sidebar_row(title, icon));
     }
     let stack_pages = ["dashboard", "performance", "battery", "display"];
-    sidebar_list.connect_row_selected(clone!(
-        #[weak]
-        stack,
-        move |_, row| {
-            if let Some(row) = row
-                && let Some(name) = stack_pages.get(row.index() as usize)
-            {
-                stack.set_visible_child_name(name);
-            }
-        }
-    ));
     sidebar_list.select_row(sidebar_list.row_at_index(0).as_ref());
 
     let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -126,13 +125,44 @@ fn build_ui(app: &adw::Application) {
         .max_sidebar_width(220.0)
         .build();
 
+    // Row selection switches the page; when the split view is collapsed
+    // (narrow window) it must also push the content pane into view.
+    sidebar_list.connect_row_selected(clone!(
+        #[weak]
+        stack,
+        #[weak]
+        split,
+        move |_, row| {
+            if let Some(row) = row
+                && let Some(name) = stack_pages.get(row.index() as usize)
+            {
+                stack.set_visible_child_name(name);
+                if split.is_collapsed() {
+                    split.set_show_content(true);
+                }
+            }
+        }
+    ));
+
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Razer Control")
+        .icon_name("razer-control-desktop")
         .default_width(980)
         .default_height(640)
         .content(&split)
         .build();
+
+    // Keep the window freely resizable: below 760 px the sidebar collapses
+    // into an overlay instead of forcing a large minimum width.
+    let narrow = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
+        adw::BreakpointConditionLengthType::MaxWidth,
+        760.0,
+        adw::LengthUnit::Px,
+    ));
+    narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
+    window.add_breakpoint(narrow);
+
     window.present();
 }
 
@@ -532,8 +562,8 @@ fn dashboard_page() -> gtk::Widget {
     )));
 
     let (gauge_card, gauge_area, gauge_value_label) = build_gauge_card(Rc::clone(&cpu_value));
-    let (fan_card, fan_value_label) = build_stat_card("FAN TARGET", "RPM");
-    let (power_card, power_value_label) = build_stat_card("POWER SOURCE", "");
+    let (fan_card, fan_value_label) = build_stat_card("FAN TARGET", "RPM", "dash-value");
+    let (power_card, power_value_label) = build_stat_card("POWER SOURCE", "", "dash-value-medium");
 
     let cards = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -604,7 +634,13 @@ fn dashboard_page() -> gtk::Widget {
         glib::ControlFlow::Continue
     });
 
-    page.upcast()
+    // Scrollable so the window can shrink below the cards' natural height,
+    // like every other page (PreferencesPage scrolls internally).
+    gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .child(&page)
+        .build()
+        .upcast()
 }
 
 /// One daemon request parsed into its `key=value` fields; empty on error.
@@ -715,10 +751,10 @@ fn build_gauge_card(value: Rc<Cell<Option<f64>>>) -> (gtk::Box, gtk::DrawingArea
     (card, area, value_label)
 }
 
-fn build_stat_card(caption: &str, unit: &str) -> (gtk::Box, gtk::Label) {
+fn build_stat_card(caption: &str, unit: &str, value_class: &str) -> (gtk::Box, gtk::Label) {
     let value_label = gtk::Label::builder()
         .label("—")
-        .css_classes(["dash-value"])
+        .css_classes([value_class])
         .vexpand(true)
         .valign(gtk::Align::Center)
         .build();

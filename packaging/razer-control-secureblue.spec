@@ -49,7 +49,9 @@ cargo test --release --locked \
 install -Dm0755 target/release/razer-control %{buildroot}%{_bindir}/razer-control
 install -Dm0755 target/release/razer-control-desktop %{buildroot}%{_bindir}/razer-control-desktop
 install -Dm0755 target/release/razer-control-tray %{buildroot}%{_bindir}/razer-control-tray
-install -Dm0644 packaging/razer-control-desktop.desktop %{buildroot}%{_datadir}/applications/razer-control-desktop.desktop
+# Named after the GTK application id so Wayland taskbars (KDE on
+# Secureblue) can match the running window to its icon.
+install -Dm0644 packaging/dev.cyph3rpunk.razer-control.desktop %{buildroot}%{_datadir}/applications/dev.cyph3rpunk.razer-control.desktop
 install -Dm0644 packaging/icons/razer-control-desktop.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/razer-control-desktop.svg
 install -Dm0644 udev/70-razer-control-secureblue.rules %{buildroot}%{_udevrulesdir}/70-razer-control-secureblue.rules
 install -Dm0644 systemd/razer-control.socket %{buildroot}%{_userunitdir}/razer-control.socket
@@ -67,7 +69,7 @@ install -Dm0644 systemd/razer-control.service %{buildroot}%{_userunitdir}/razer-
 %{_bindir}/razer-control
 %{_bindir}/razer-control-desktop
 %{_bindir}/razer-control-tray
-%{_datadir}/applications/razer-control-desktop.desktop
+%{_datadir}/applications/dev.cyph3rpunk.razer-control.desktop
 %{_datadir}/icons/hicolor/scalable/apps/razer-control-desktop.svg
 %{_udevrulesdir}/70-razer-control-secureblue.rules
 %{_userunitdir}/razer-control.socket
