@@ -90,8 +90,9 @@ fn cpu_temp_celsius() -> Option<f64> {
 }
 
 /// AC adapter state from /sys/class/power_supply (type == "Mains").
+/// Public: the daemon transport polls this for AC/battery automation.
 #[cfg(target_os = "linux")]
-fn on_ac() -> Option<bool> {
+pub fn on_ac() -> Option<bool> {
     let supplies = std::fs::read_dir("/sys/class/power_supply").ok()?;
     for entry in supplies.flatten() {
         let path = entry.path();
@@ -105,7 +106,7 @@ fn on_ac() -> Option<bool> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn on_ac() -> Option<bool> {
+pub fn on_ac() -> Option<bool> {
     None
 }
 

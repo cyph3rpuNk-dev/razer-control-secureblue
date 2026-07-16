@@ -48,12 +48,23 @@ fn run_with<B: Backend>(mut daemon: Daemon<B>, allow_experimental: bool) -> Resu
         .set_nonblocking(true)
         .map_err(|error| format!("cannot make listener non-blocking: {error}"))?;
 
+    // Restore the persisted settings through the normal validation path,
+    // then keep the file in sync after every accepted mutation.
+    if let Some(state) = load_state_file() {
+        daemon.load_state(state);
+        daemon.reapply_persisted();
+        daemon.take_dirty();
+    }
+
     eprintln!(
         "razer-control daemon: serving {} ({} backend, experimental={})",
         BLADE_14_2023.name,
         daemon.backend().name(),
         allow_experimental
     );
+
+    let mut last_power_poll = std::time::Instant::now();
+    let mut on_ac = crate::telemetry::on_ac();
 
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {
@@ -70,11 +81,62 @@ fn run_with<B: Backend>(mut daemon: Daemon<B>, allow_experimental: bool) -> Resu
                 return Err(format!("accept failed: {error}"));
             }
         }
+
+        if last_power_poll.elapsed() >= Duration::from_secs(5) {
+            last_power_poll = std::time::Instant::now();
+            let current = crate::telemetry::on_ac();
+            if let Some(now_on_ac) = current
+                && on_ac != current
+                && let Some(action) = daemon.on_power_change(now_on_ac)
+            {
+                eprintln!("automation: {action}");
+            }
+            on_ac = current;
+        }
+
+        if daemon.take_dirty() {
+            save_state_file(daemon.persisted());
+        }
     }
 
     eprintln!("razer-control daemon: shutting down");
     daemon.shutdown();
     Ok(())
+}
+
+/// State file under `$XDG_CONFIG_HOME` (or `~/.config`): the daemon is
+/// per-user, so its persisted settings are too.
+fn state_file_path() -> Option<PathBuf> {
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|home| PathBuf::from(home).join(".config"))
+        })?;
+    Some(base.join("razer-control").join("state"))
+}
+
+fn load_state_file() -> Option<crate::config::PersistedState> {
+    let text = std::fs::read_to_string(state_file_path()?).ok()?;
+    Some(crate::config::PersistedState::parse(&text))
+}
+
+fn save_state_file(state: &crate::config::PersistedState) {
+    let Some(path) = state_file_path() else {
+        return;
+    };
+    if let Some(parent) = path.parent()
+        && let Err(error) = std::fs::create_dir_all(parent)
+    {
+        eprintln!("cannot create {}: {error}", parent.display());
+        return;
+    }
+    if let Err(error) = std::fs::write(&path, state.render()) {
+        eprintln!("cannot save {}: {error}", path.display());
+    }
 }
 
 /// Prefer a listener passed by systemd socket activation; otherwise bind a

@@ -9,6 +9,12 @@ pub enum Request {
     Ping,
     Status,
     Telemetry,
+    /// Configure the fan choice applied when the power source changes;
+    /// `None` clears the rule for that source.
+    Automation {
+        on_ac: bool,
+        fan: Option<FanMode>,
+    },
     Operation(RequestedOperation),
 }
 
@@ -18,6 +24,28 @@ pub fn parse_request(line: &str) -> Result<Request, String> {
         ["ping"] => Ok(Request::Ping),
         ["status"] => Ok(Request::Status),
         ["telemetry"] => Ok(Request::Telemetry),
+        ["automation", source, rest @ ..] => {
+            let on_ac = match *source {
+                "ac" => true,
+                "battery" => false,
+                other => return Err(format!("unknown power source {other:?}")),
+            };
+            let fan = match rest {
+                ["off"] => None,
+                ["fan", "auto"] => Some(FanMode::Auto),
+                ["fan", "manual", rpm] => Some(FanMode::Manual(
+                    rpm.parse()
+                        .map_err(|_| "fan RPM must be an integer".to_owned())?,
+                )),
+                _ => {
+                    return Err(
+                        "expected: automation <ac|battery> <off|fan auto|fan manual <rpm>>"
+                            .to_owned(),
+                    );
+                }
+            };
+            Ok(Request::Automation { on_ac, fan })
+        }
         other => parse_operation(other).map(Request::Operation),
     }
 }
@@ -83,6 +111,33 @@ mod tests {
         assert_eq!(parse_request("ping"), Ok(Request::Ping));
         assert_eq!(parse_request("status"), Ok(Request::Status));
         assert_eq!(parse_request("telemetry"), Ok(Request::Telemetry));
+    }
+
+    #[test]
+    fn parses_automation_rules() {
+        assert_eq!(
+            parse_request("automation ac fan manual 4000"),
+            Ok(Request::Automation {
+                on_ac: true,
+                fan: Some(FanMode::Manual(4000))
+            })
+        );
+        assert_eq!(
+            parse_request("automation battery fan auto"),
+            Ok(Request::Automation {
+                on_ac: false,
+                fan: Some(FanMode::Auto)
+            })
+        );
+        assert_eq!(
+            parse_request("automation ac off"),
+            Ok(Request::Automation {
+                on_ac: true,
+                fan: None
+            })
+        );
+        assert!(parse_request("automation solar fan auto").is_err());
+        assert!(parse_request("automation ac fan manual soon").is_err());
     }
 
     #[test]
