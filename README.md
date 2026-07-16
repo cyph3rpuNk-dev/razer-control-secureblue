@@ -2,13 +2,14 @@
 
 An Atomic-Linux-oriented rebuild of Razer Blade control foundations.
 
-Licensed **GPL-2.0-only**. The project plans to derive its HID protocol layer
-from [razer-control-revived](https://github.com/encomjp/razer-control-revived)
-(GPL-2.0), which in turn builds on the razer-laptop-control lineage; adopting
-its license up front keeps that import clean. The code currently in this
-repository is original to this project.
+Licensed **GPL-2.0-only**. The HID protocol layer (`src/protocol.rs`) is
+derived from [razer-control-revived](https://github.com/encomjp/razer-control-revived)
+(GPL-2.0), which in turn builds on the razer-laptop-control lineage, and
+cross-checked against the independently derived
+[fang-razer-linux](https://github.com/bladeandsoulx/fang-razer-linux)
+protocol crate (GPL-2.0). The rest of the code is original to this project.
 
-This initial milestone deliberately does **not** send HID commands to hardware. It establishes the safety boundary required before that work: a verified device capability table, profile validation, a secure runtime-socket location, and an udev rule which grants access only to the active local user.
+This initial milestone deliberately does **not** send HID commands to hardware. It establishes the safety boundary required before that work: a verified device capability table, profile validation, a secure runtime-socket location, an udev rule which grants access only to the active local user, and a wire-protocol encoder whose packets are locked down by golden-byte tests but never sent.
 
 ## Blade 14 (2023)
 
