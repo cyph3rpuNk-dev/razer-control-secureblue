@@ -7,6 +7,8 @@
 use std::path::PathBuf;
 
 pub mod backend;
+#[cfg(feature = "hidraw-backend")]
+pub mod backend_hidraw;
 pub mod daemon;
 #[cfg(unix)]
 pub mod daemon_unix;

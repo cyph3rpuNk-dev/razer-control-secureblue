@@ -25,7 +25,12 @@ The Razer Blade 14 (2023) is recognised as USB `1532:029d`. Its declared capabil
 - No kernel module or DKMS component.
 - No world-writable `hidraw` node: the supplied udev rule uses `TAG+="uaccess"` only.
 - The user daemon socket belongs in `$XDG_RUNTIME_DIR/razer-control/`, never `/tmp`.
-- Hardware writes will remain unavailable until protocol implementations have model-specific integration tests.
+- Hardware writes are double-gated: the hidraw backend exists only in builds
+  with the `hidraw-backend` cargo feature, and even then the daemon uses it
+  only when started with the explicit `--backend hidraw` flag. Every packet
+  the encoder can emit is pinned by model-specific golden-byte tests
+  ([src/protocol.rs](src/protocol.rs)); on-device verification on the Blade 14
+  is the remaining step before the flag is documented as supported.
 
 ## Try the current foundation
 
@@ -42,9 +47,12 @@ cargo run -- udev-rule
 ## Daemon (dry-run skeleton)
 
 `razer-control daemon` is a per-user, socket-activated daemon. It validates
-every request against the capability table and hands accepted operations to a
-**dry-run backend that only logs** — no HID command is sent in this release.
-The transport and failsafe behaviour are real:
+every request against the capability table and hands accepted operations to
+its backend — by default a **dry-run backend that only logs**. In builds with
+the `hidraw-backend` feature, `daemon --backend hidraw` opens the Blade's EC
+over hidraw instead (feature reports, single retry on BUSY, response echo
+checked); a plugged-in Razer peripheral can never be selected in place of the
+laptop. The transport and failsafe behaviour are identical in both modes:
 
 - systemd socket activation on `%t/razer-control/daemon.sock` (0600 socket in
   a 0700 directory); a manual fallback uses `$XDG_RUNTIME_DIR` and refuses to

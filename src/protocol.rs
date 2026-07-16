@@ -115,6 +115,13 @@ impl Packet {
         }
     }
 
+    /// True when `report` carries the EC's answer to this command: the
+    /// response echoes the command class and id at the same wire offsets.
+    pub fn matches_response(&self, report: &[u8; REPORT_LEN]) -> bool {
+        report[OFFSET_COMMAND_CLASS] == self.command_class
+            && report[OFFSET_COMMAND_ID] == self.command_id
+    }
+
     /// Serialises to the exact buffer `send_feature_report` expects: report
     /// number 0x00, status 0x00 (new command), then the EC report proper.
     pub fn to_feature_report(&self) -> [u8; REPORT_LEN] {
@@ -317,6 +324,17 @@ mod tests {
         // A byte inside the window must.
         buf[10] = 0xff;
         assert_ne!(crc(&buf), 0x0f);
+    }
+
+    #[test]
+    fn response_matching_requires_the_command_echo() {
+        let request = get_battery_health();
+        let mut response = request.to_feature_report();
+        response[1] = 0x02;
+        assert!(request.matches_response(&response));
+        // An answer to some other command must never be accepted.
+        response[8] = 0x12;
+        assert!(!request.matches_response(&response));
     }
 
     #[test]

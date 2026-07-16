@@ -16,6 +16,17 @@ path = "src/lib.rs"
 name = "razer-control"
 path = "src/main.rs"
 
+[features]
+# Compiles the real hidraw backend.  Even with the feature on, the daemon
+# only touches hardware when started with the explicit `--backend hidraw`
+# runtime flag; dry-run stays the default.
+hidraw-backend = ["dep:hidapi"]
+
+# hidapi is cross-platform, so the backend type-checks on the Windows dev
+# host too; only the daemon transport is unix-gated.
+[dependencies]
+hidapi = { version = "2", optional = true }
+
 [target.'cfg(unix)'.dependencies]
 listenfd = "1"
 signal-hook = "0.3"

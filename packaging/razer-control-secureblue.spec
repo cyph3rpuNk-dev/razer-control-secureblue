@@ -21,23 +21,28 @@ BuildRequires:  dbus-devel
 # gtk4-devel.
 BuildRequires:  gtk4-devel
 BuildRequires:  libadwaita-devel
+# hidapi (hidraw backend) compiles its bundled C library against libudev
+BuildRequires:  systemd-devel
 
 %description
 Per-user, socket-activated control daemon for Razer Blade laptops, built for
 Fedora Atomic and Secureblue. Session-scoped uaccess HID permissions instead
 of world-writable device nodes, a verified per-model capability table, and an
-automatic-fan failsafe. The current release contains the policy layer and a
-dry-run daemon; it sends no hardware commands.
+automatic-fan failsafe. The daemon defaults to a dry-run backend that sends
+no hardware commands; real EC access requires starting it with the explicit
+--backend hidraw flag.
 
 %prep
 %autosetup
 
 %build
 cargo build --release --locked \
+  --features razer-control-secureblue/hidraw-backend \
   -p razer-control-secureblue -p razer-control-tray -p razer-control-desktop
 
 %check
 cargo test --release --locked \
+  --features razer-control-secureblue/hidraw-backend \
   -p razer-control-secureblue -p razer-control-tray -p razer-control-desktop
 
 %install

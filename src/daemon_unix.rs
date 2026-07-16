@@ -9,13 +9,34 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use crate::backend::DryRunBackend;
+use crate::backend::{Backend, BackendChoice, DryRunBackend};
 use crate::daemon::Daemon;
 use crate::{BLADE_14_2023, runtime_directory};
 
 const SOCKET_FILE: &str = "daemon.sock";
 
-pub fn run(allow_experimental: bool) -> Result<(), String> {
+pub fn run(allow_experimental: bool, backend: BackendChoice) -> Result<(), String> {
+    match backend {
+        BackendChoice::DryRun => run_with(
+            Daemon::new(BLADE_14_2023, DryRunBackend::default(), allow_experimental),
+            allow_experimental,
+        ),
+        #[cfg(feature = "hidraw-backend")]
+        BackendChoice::Hidraw => {
+            let backend = crate::backend_hidraw::HidrawBackend::open(BLADE_14_2023.id)?;
+            run_with(
+                Daemon::new(BLADE_14_2023, backend, allow_experimental),
+                allow_experimental,
+            )
+        }
+        #[cfg(not(feature = "hidraw-backend"))]
+        BackendChoice::Hidraw => Err(
+            "this build has no hidraw backend; rebuild with --features hidraw-backend".to_owned(),
+        ),
+    }
+}
+
+fn run_with<B: Backend>(mut daemon: Daemon<B>, allow_experimental: bool) -> Result<(), String> {
     let shutdown = Arc::new(AtomicBool::new(false));
     for signal in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
         signal_hook::flag::register(signal, Arc::clone(&shutdown))
@@ -27,10 +48,11 @@ pub fn run(allow_experimental: bool) -> Result<(), String> {
         .set_nonblocking(true)
         .map_err(|error| format!("cannot make listener non-blocking: {error}"))?;
 
-    let mut daemon = Daemon::new(BLADE_14_2023, DryRunBackend::default(), allow_experimental);
     eprintln!(
-        "razer-control daemon: serving {} (dry-run backend, experimental={})",
-        BLADE_14_2023.name, allow_experimental
+        "razer-control daemon: serving {} ({} backend, experimental={})",
+        BLADE_14_2023.name,
+        daemon.backend().name(),
+        allow_experimental
     );
 
     while !shutdown.load(Ordering::Relaxed) {
@@ -93,8 +115,8 @@ fn private_runtime_directory() -> Result<PathBuf, String> {
         .ok_or_else(|| "XDG_RUNTIME_DIR is not set; refusing to fall back to /tmp".to_owned())
 }
 
-fn serve_connection(
-    daemon: &mut Daemon<DryRunBackend>,
+fn serve_connection<B: Backend>(
+    daemon: &mut Daemon<B>,
     stream: UnixStream,
     shutdown: &AtomicBool,
 ) -> std::io::Result<()> {

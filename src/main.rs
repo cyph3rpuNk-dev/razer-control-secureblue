@@ -1,12 +1,12 @@
 use std::{env, process::ExitCode};
 
 use razer_control_secureblue::{
-    DeviceId, blade_14_2023_udev_rule, find_device, ipc, validate_operation,
+    DeviceId, backend::BackendChoice, blade_14_2023_udev_rule, find_device, ipc, validate_operation,
 };
 
 fn usage() {
     eprintln!(
-        "Usage:\n  razer-control device <vendor-hex> <product-hex>\n  razer-control validate fan auto\n  razer-control validate fan manual <rpm>\n  razer-control validate bho <50-80>\n  razer-control validate boost [--experimental]\n  razer-control validate gpu-tdp <watts> [--experimental]\n  razer-control daemon [--experimental]\n  razer-control ctl <request...>   (e.g. ctl fan manual 3000, ctl status)\n  razer-control udev-rule"
+        "Usage:\n  razer-control device <vendor-hex> <product-hex>\n  razer-control validate fan auto\n  razer-control validate fan manual <rpm>\n  razer-control validate bho <50-80>\n  razer-control validate boost [--experimental]\n  razer-control validate gpu-tdp <watts> [--experimental]\n  razer-control daemon [--experimental] [--backend dry-run|hidraw]\n  razer-control ctl <request...>   (e.g. ctl fan manual 3000, ctl status)\n  razer-control udev-rule"
     );
 }
 
@@ -33,14 +33,26 @@ fn current_supported_device() -> DeviceId {
 }
 
 #[cfg(unix)]
-fn run_daemon(experimental: bool) -> Result<String, String> {
-    razer_control_secureblue::daemon_unix::run(experimental)
+fn run_daemon(experimental: bool, backend: BackendChoice) -> Result<String, String> {
+    razer_control_secureblue::daemon_unix::run(experimental, backend)
         .map(|()| "daemon exited cleanly".to_owned())
 }
 
 #[cfg(not(unix))]
-fn run_daemon(_experimental: bool) -> Result<String, String> {
+fn run_daemon(_experimental: bool, _backend: BackendChoice) -> Result<String, String> {
     Err("the daemon requires Linux (hidraw and systemd)".to_owned())
+}
+
+/// `--backend <name>`, defaulting to the dry run: hardware access is opt-in
+/// per invocation, never ambient.
+fn parse_backend_flag(rest: &[String]) -> Result<BackendChoice, String> {
+    match rest.iter().position(|argument| argument == "--backend") {
+        None => Ok(BackendChoice::DryRun),
+        Some(index) => rest
+            .get(index + 1)
+            .ok_or_else(|| "--backend requires a value: dry-run or hidraw".to_owned())
+            .and_then(|value| BackendChoice::parse(value)),
+    }
 }
 
 #[cfg(unix)]
@@ -88,7 +100,7 @@ fn main() -> ExitCode {
         }
         [command, rest @ ..] if command == "daemon" => {
             let experimental = rest.iter().any(|argument| argument == "--experimental");
-            run_daemon(experimental)
+            parse_backend_flag(rest).and_then(|backend| run_daemon(experimental, backend))
         }
         [command, rest @ ..] if command == "ctl" && !rest.is_empty() => {
             send_to_daemon(&rest.join(" "))

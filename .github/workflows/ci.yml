@@ -9,13 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install libdbus (ksni tray) and GTK4/libadwaita (desktop app)
+      - name: Install libdbus (ksni tray), GTK4/libadwaita (desktop app), libudev (hidapi)
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libdbus-1-dev \
-            libgtk-4-dev libadwaita-1-dev
+            libgtk-4-dev libadwaita-1-dev libudev-dev
       - name: Unit tests
         run: cargo test --locked --workspace
+      - name: Unit tests with the hidraw backend compiled in
+        run: cargo test --locked -p razer-control-secureblue --features hidraw-backend
       - name: Formatting
         run: cargo fmt --all --check
 
