@@ -8,6 +8,7 @@ use crate::{FanMode, RequestedOperation};
 pub enum Request {
     Ping,
     Status,
+    Telemetry,
     Operation(RequestedOperation),
 }
 
@@ -16,6 +17,7 @@ pub fn parse_request(line: &str) -> Result<Request, String> {
     match tokens.as_slice() {
         ["ping"] => Ok(Request::Ping),
         ["status"] => Ok(Request::Status),
+        ["telemetry"] => Ok(Request::Telemetry),
         other => parse_operation(other).map(Request::Operation),
     }
 }
@@ -80,6 +82,7 @@ mod tests {
     fn parses_control_requests() {
         assert_eq!(parse_request("ping"), Ok(Request::Ping));
         assert_eq!(parse_request("status"), Ok(Request::Status));
+        assert_eq!(parse_request("telemetry"), Ok(Request::Telemetry));
     }
 
     #[test]

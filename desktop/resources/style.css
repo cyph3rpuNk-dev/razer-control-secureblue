@@ -53,3 +53,55 @@ preferencesgroup list.boxed-list,
 .card {
   border: 1px solid #2a2a2a;
 }
+
+/* Dashboard cards and type, in Fang's terminal-flavoured style. */
+.dash-card {
+  background-color: #101010;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 20px;
+}
+.dash-label {
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #8a8a8a;
+}
+.dash-value {
+  font-family: monospace;
+  font-size: 34px;
+  font-weight: 700;
+  color: #e8e8e8;
+}
+.dash-unit {
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #8a8a8a;
+}
+.chart-value,
+.profile-value {
+  font-family: monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: #44d62c;
+}
+
+/* Sidebar footer: device identity and transport, like Fang's status box. */
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid #242424;
+}
+.status-dot {
+  color: #44d62c;
+  font-size: 10px;
+}
+.footer-title {
+  font-size: 12px;
+  color: #d0d0d0;
+}
+.footer-subtitle {
+  font-family: monospace;
+  font-size: 10px;
+  color: #8a8a8a;
+}

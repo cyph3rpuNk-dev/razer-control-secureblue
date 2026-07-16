@@ -4,6 +4,9 @@
 use adw::prelude::*;
 use gtk::glib;
 use gtk::glib::clone;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 
 const APP_ID: &str = "dev.cyph3rpunk.razer-control";
 
@@ -49,22 +52,15 @@ fn build_ui(app: &adw::Application) {
     let (battery, bho_switch, limit_scale) = build_battery_group(&toast_overlay);
     let (status, status_row, power_row, transport_row) = build_status_group();
 
-    // Synapse's tab shell.  Display and Lighting join the stack when the
-    // daemon grows those features; no placeholder tabs for capabilities that
-    // do not exist yet.  Icons are provisional pending an on-device look.
-    let stack = adw::ViewStack::new();
-    stack.add_titled_with_icon(
-        &preferences_page(&[&cooling, &status]),
-        Some("performance"),
-        "Performance",
-        "power-profile-performance-symbolic",
-    );
-    stack.add_titled_with_icon(
-        &preferences_page(&[&battery]),
-        Some("battery"),
-        "Battery",
-        "battery-good-symbolic",
-    );
+    // Fang-style shell: sidebar navigation, dashboard first.  GPU & Display
+    // and Lighting pages join the list when the daemon grows those features;
+    // no placeholder pages for capabilities that do not exist yet.
+    let stack = gtk::Stack::builder()
+        .transition_type(gtk::StackTransitionType::Crossfade)
+        .build();
+    stack.add_named(&dashboard_page(), Some("dashboard"));
+    stack.add_named(&preferences_page(&[&cooling, &status]), Some("performance"));
+    stack.add_named(&preferences_page(&[&battery]), Some("battery"));
     toast_overlay.set_child(Some(&stack));
 
     // Fill the status rows once at launch.
@@ -74,35 +70,120 @@ fn build_ui(app: &adw::Application) {
     rpm_scale.set_sensitive(fan_combo.selected() == 1);
     limit_scale.set_sensitive(bho_switch.is_active());
 
-    let switcher = adw::ViewSwitcher::builder()
-        .stack(&stack)
-        .policy(adw::ViewSwitcherPolicy::Wide)
+    let sidebar_list = gtk::ListBox::builder()
+        .css_classes(["navigation-sidebar"])
+        .vexpand(true)
         .build();
-    let header = adw::HeaderBar::new();
-    header.set_title_widget(Some(&switcher));
+    for (title, icon) in [
+        ("Dashboard", "view-grid-symbolic"),
+        ("Performance", "power-profile-performance-symbolic"),
+        ("Battery", "battery-good-symbolic"),
+    ] {
+        sidebar_list.append(&sidebar_row(title, icon));
+    }
+    let stack_pages = ["dashboard", "performance", "battery"];
+    sidebar_list.connect_row_selected(clone!(
+        #[weak]
+        stack,
+        move |_, row| {
+            if let Some(row) = row
+                && let Some(name) = stack_pages.get(row.index() as usize)
+            {
+                stack.set_visible_child_name(name);
+            }
+        }
+    ));
+    sidebar_list.select_row(sidebar_list.row_at_index(0).as_ref());
 
-    let toolbar = adw::ToolbarView::new();
-    toolbar.add_top_bar(&header);
-    toolbar.set_content(Some(&toast_overlay));
+    let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    sidebar_box.append(&sidebar_list);
+    sidebar_box.append(&sidebar_footer());
+
+    let sidebar_toolbar = adw::ToolbarView::new();
+    sidebar_toolbar.add_top_bar(&adw::HeaderBar::new());
+    sidebar_toolbar.set_content(Some(&sidebar_box));
+
+    let content_toolbar = adw::ToolbarView::new();
+    content_toolbar.add_top_bar(&adw::HeaderBar::new());
+    content_toolbar.set_content(Some(&toast_overlay));
+
+    let split = adw::NavigationSplitView::builder()
+        .sidebar(
+            &adw::NavigationPage::builder()
+                .title("Razer Control")
+                .child(&sidebar_toolbar)
+                .build(),
+        )
+        .content(
+            &adw::NavigationPage::builder()
+                .title("Razer Control")
+                .child(&content_toolbar)
+                .build(),
+        )
+        .min_sidebar_width(200.0)
+        .max_sidebar_width(220.0)
+        .build();
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Razer Control")
-        .default_width(480)
-        .default_height(620)
-        .content(&toolbar)
+        .default_width(980)
+        .default_height(640)
+        .content(&split)
         .build();
     window.present();
 }
 
-/// One tab: an `adw::PreferencesPage` (which supplies Synapse's centered
+fn sidebar_row(title: &str, icon: &str) -> gtk::ListBoxRow {
+    let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    row_box.set_margin_top(8);
+    row_box.set_margin_bottom(8);
+    row_box.set_margin_start(6);
+    row_box.append(&gtk::Image::from_icon_name(icon));
+    row_box.append(&gtk::Label::new(Some(title)));
+    gtk::ListBoxRow::builder().child(&row_box).build()
+}
+
+/// Device and daemon identity, pinned to the sidebar's bottom like Fang's
+/// status footer.  The subtitle names the transport so a mock session can
+/// never be mistaken for the real daemon.
+fn sidebar_footer() -> gtk::Box {
+    let footer = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .css_classes(["sidebar-footer"])
+        .build();
+    let dot = gtk::Label::builder()
+        .label("\u{25CF}")
+        .css_classes(["status-dot"])
+        .valign(gtk::Align::Start)
+        .build();
+    let name = gtk::Label::builder()
+        .label(razer_control_secureblue::BLADE_14_2023.name)
+        .halign(gtk::Align::Start)
+        .css_classes(["footer-title"])
+        .build();
+    let transport_label = gtk::Label::builder()
+        .label(transport::label())
+        .halign(gtk::Align::Start)
+        .css_classes(["footer-subtitle"])
+        .build();
+    let text = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    text.append(&name);
+    text.append(&transport_label);
+    footer.append(&dot);
+    footer.append(&text);
+    footer
+}
+
+/// One page: an `adw::PreferencesPage` (which supplies Synapse's centered
 /// column via its built-in clamp) holding the given card groups in order.
-fn preferences_page(groups: &[&adw::PreferencesGroup]) -> adw::PreferencesPage {
+fn preferences_page(groups: &[&adw::PreferencesGroup]) -> gtk::Widget {
     let page = adw::PreferencesPage::new();
     for group in groups {
         page.add(*group);
     }
-    page
+    page.upcast()
 }
 
 fn build_cooling_group(
@@ -233,6 +314,304 @@ fn build_status_group() -> (
     ));
 
     (group, status_row, power_row, transport_row)
+}
+
+const SPARKLINE_CAPACITY: usize = 90;
+const GAUGE_MIN_C: f64 = 30.0;
+const GAUGE_MAX_C: f64 = 100.0;
+
+/// Fang-style dashboard: gauge and stat cards over a 90-second history
+/// chart and an active-profile bar, fed by the daemon's read-only
+/// `telemetry` request at 1 Hz.  Pure display — no control lives here.
+fn dashboard_page() -> gtk::Widget {
+    let cpu_value = Rc::new(Cell::new(None::<f64>));
+    let history = Rc::new(RefCell::new(VecDeque::<f64>::with_capacity(
+        SPARKLINE_CAPACITY,
+    )));
+
+    let (gauge_card, gauge_area, gauge_value_label) = build_gauge_card(Rc::clone(&cpu_value));
+    let (fan_card, fan_value_label) = build_stat_card("FAN TARGET", "RPM");
+    let (power_card, power_value_label) = build_stat_card("POWER SOURCE", "");
+
+    let cards = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(16)
+        .homogeneous(true)
+        .build();
+    cards.append(&gauge_card);
+    cards.append(&fan_card);
+    cards.append(&power_card);
+
+    let (chart_card, chart_area, chart_value_label) =
+        build_sparkline_card("CPU TEMPERATURE — 90 S", Rc::clone(&history));
+
+    let (profile_bar, profile_value_label, profile_detail_label) = build_profile_bar();
+
+    let page = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(16)
+        .margin_top(24)
+        .margin_bottom(24)
+        .margin_start(24)
+        .margin_end(24)
+        .build();
+    page.append(&cards);
+    page.append(&chart_card);
+    page.append(&profile_bar);
+
+    glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
+        let telemetry = request_fields("telemetry");
+        let status = request_fields("status");
+
+        let cpu = telemetry
+            .get("cpu_temp")
+            .and_then(|value| value.parse::<f64>().ok());
+        cpu_value.set(cpu);
+        gauge_value_label.set_text(&cpu.map_or("—".to_owned(), |t| format!("{t:.0}")));
+        if let Some(temperature) = cpu {
+            let mut samples = history.borrow_mut();
+            if samples.len() == SPARKLINE_CAPACITY {
+                samples.pop_front();
+            }
+            samples.push_back(temperature);
+            chart_value_label.set_text(&format!("{temperature:.0} °C"));
+        }
+        fan_value_label.set_text(
+            telemetry
+                .get("fan_rpm")
+                .filter(|value| *value != "none")
+                .map_or("—", String::as_str),
+        );
+        power_value_label.set_text(match telemetry.get("power").map(String::as_str) {
+            Some("ac") => "Plugged in",
+            Some("battery") => "On battery",
+            _ => "—",
+        });
+        profile_value_label.set_text(&describe_status_fan(status.get("fan")));
+        profile_detail_label.set_text(&format!(
+            "backend: {}{}",
+            status.get("backend").map_or("—", String::as_str),
+            if telemetry.get("simulated").map(String::as_str) == Some("true") {
+                " · simulated"
+            } else {
+                ""
+            }
+        ));
+        gauge_area.queue_draw();
+        chart_area.queue_draw();
+        glib::ControlFlow::Continue
+    });
+
+    page.upcast()
+}
+
+/// One daemon request parsed into its `key=value` fields; empty on error.
+fn request_fields(request: &str) -> HashMap<String, String> {
+    let Ok(line) = transport::request(request) else {
+        return HashMap::new();
+    };
+    line.trim_start_matches("ok ")
+        .split_whitespace()
+        .filter_map(|token| {
+            token
+                .split_once('=')
+                .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
+fn describe_status_fan(fan: Option<&String>) -> String {
+    match fan.map(String::as_str) {
+        Some("auto") => "Fan: automatic".to_owned(),
+        Some(manual) if manual.starts_with("manual:") => {
+            format!("Fan: manual {} RPM", manual.trim_start_matches("manual:"))
+        }
+        _ => "Fan: —".to_owned(),
+    }
+}
+
+fn dash_card() -> gtk::Box {
+    gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .css_classes(["dash-card"])
+        .build()
+}
+
+fn dash_label(text: &str) -> gtk::Label {
+    gtk::Label::builder()
+        .label(text)
+        .halign(gtk::Align::Center)
+        .css_classes(["dash-label"])
+        .build()
+}
+
+/// Segmented arc gauge in the Fang style: 28 ticks over 270 degrees, lit
+/// green up to the current fraction of the 30–100 °C span.
+fn build_gauge_card(value: Rc<Cell<Option<f64>>>) -> (gtk::Box, gtk::DrawingArea, gtk::Label) {
+    let area = gtk::DrawingArea::builder()
+        .content_width(150)
+        .content_height(150)
+        .halign(gtk::Align::Center)
+        .build();
+    area.set_draw_func(move |_, cr, width, height| {
+        let center_x = width as f64 / 2.0;
+        let center_y = height as f64 / 2.0;
+        let radius = width.min(height) as f64 / 2.0 - 8.0;
+        let fraction = value
+            .get()
+            .map(|t| ((t - GAUGE_MIN_C) / (GAUGE_MAX_C - GAUGE_MIN_C)).clamp(0.0, 1.0))
+            .unwrap_or(0.0);
+        let ticks = 28;
+        let start = 0.75 * std::f64::consts::PI;
+        let sweep = 1.5 * std::f64::consts::PI;
+        cr.set_line_width(7.0);
+        cr.set_line_cap(gtk::cairo::LineCap::Round);
+        for tick in 0..ticks {
+            let position = tick as f64 / (ticks - 1) as f64;
+            let angle = start + position * sweep;
+            if position <= fraction && value.get().is_some() {
+                cr.set_source_rgb(0.27, 0.84, 0.17);
+            } else {
+                cr.set_source_rgb(0.16, 0.16, 0.16);
+            }
+            let inner = radius - 9.0;
+            cr.move_to(
+                center_x + inner * angle.cos(),
+                center_y + inner * angle.sin(),
+            );
+            cr.line_to(
+                center_x + radius * angle.cos(),
+                center_y + radius * angle.sin(),
+            );
+            let _ = cr.stroke();
+        }
+    });
+
+    let value_label = gtk::Label::builder()
+        .label("—")
+        .css_classes(["dash-value"])
+        .build();
+    let unit_label = gtk::Label::builder()
+        .label("°C")
+        .css_classes(["dash-unit"])
+        .build();
+    let center = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .valign(gtk::Align::Center)
+        .halign(gtk::Align::Center)
+        .build();
+    center.append(&value_label);
+    center.append(&unit_label);
+
+    let overlay = gtk::Overlay::builder().child(&area).build();
+    overlay.add_overlay(&center);
+
+    let card = dash_card();
+    card.append(&overlay);
+    card.append(&dash_label("CPU PACKAGE"));
+    (card, area, value_label)
+}
+
+fn build_stat_card(caption: &str, unit: &str) -> (gtk::Box, gtk::Label) {
+    let value_label = gtk::Label::builder()
+        .label("—")
+        .css_classes(["dash-value"])
+        .vexpand(true)
+        .valign(gtk::Align::Center)
+        .build();
+    let card = dash_card();
+    card.append(&value_label);
+    if !unit.is_empty() {
+        card.append(&dash_label(unit));
+    }
+    card.append(&dash_label(caption));
+    (card, value_label)
+}
+
+/// 90-sample line chart drawn with cairo; scales to the data's own range
+/// with a little headroom so idle temperatures do not flatline at the edge.
+fn build_sparkline_card(
+    caption: &str,
+    history: Rc<RefCell<VecDeque<f64>>>,
+) -> (gtk::Box, gtk::DrawingArea, gtk::Label) {
+    let area = gtk::DrawingArea::builder()
+        .content_height(90)
+        .hexpand(true)
+        .build();
+    area.set_draw_func(move |_, cr, width, height| {
+        let samples = history.borrow();
+        if samples.len() < 2 {
+            return;
+        }
+        let low = samples.iter().cloned().fold(f64::INFINITY, f64::min) - 2.0;
+        let high = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max) + 2.0;
+        let x_step = width as f64 / (SPARKLINE_CAPACITY - 1) as f64;
+        let project = |sample: f64| {
+            let normalised = (sample - low) / (high - low);
+            height as f64 - normalised * (height as f64 - 8.0) - 4.0
+        };
+        cr.set_source_rgba(0.27, 0.84, 0.17, 0.15);
+        cr.move_to(0.0, height as f64);
+        for (index, sample) in samples.iter().enumerate() {
+            cr.line_to(index as f64 * x_step, project(*sample));
+        }
+        cr.line_to((samples.len() - 1) as f64 * x_step, height as f64);
+        let _ = cr.fill();
+        cr.set_source_rgb(0.27, 0.84, 0.17);
+        cr.set_line_width(2.0);
+        for (index, sample) in samples.iter().enumerate() {
+            let x = index as f64 * x_step;
+            let y = project(*sample);
+            if index == 0 {
+                cr.move_to(x, y);
+            } else {
+                cr.line_to(x, y);
+            }
+        }
+        let _ = cr.stroke();
+    });
+
+    let caption_label = dash_label(caption);
+    caption_label.set_halign(gtk::Align::Start);
+    let value_label = gtk::Label::builder()
+        .label("—")
+        .halign(gtk::Align::End)
+        .hexpand(true)
+        .css_classes(["chart-value"])
+        .build();
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    header.append(&caption_label);
+    header.append(&value_label);
+
+    let card = dash_card();
+    card.append(&header);
+    card.append(&area);
+    (card, area, value_label)
+}
+
+fn build_profile_bar() -> (gtk::Box, gtk::Label, gtk::Label) {
+    let caption = dash_label("ACTIVE PROFILE");
+    caption.set_halign(gtk::Align::Start);
+    let value_label = gtk::Label::builder()
+        .label("—")
+        .css_classes(["profile-value"])
+        .build();
+    let detail_label = gtk::Label::builder()
+        .label("")
+        .halign(gtk::Align::End)
+        .hexpand(true)
+        .css_classes(["footer-subtitle"])
+        .build();
+    let bar = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(16)
+        .css_classes(["dash-card"])
+        .build();
+    bar.append(&caption);
+    bar.append(&value_label);
+    bar.append(&detail_label);
+    (bar, value_label, detail_label)
 }
 
 /// Synapse dropdowns mark the chosen option with a green row, not a
@@ -407,7 +786,10 @@ mod transport {
     fn mock(line: &str) -> Result<String, String> {
         static MOCK: OnceLock<Mutex<Daemon<DryRunBackend>>> = OnceLock::new();
         let daemon = MOCK.get_or_init(|| {
-            Mutex::new(Daemon::new(BLADE_14_2023, DryRunBackend::default(), false))
+            Mutex::new(
+                Daemon::new(BLADE_14_2023, DryRunBackend::default(), false)
+                    .with_simulated_telemetry(),
+            )
         });
         Ok(daemon
             .lock()

@@ -12,6 +12,7 @@ pub struct Daemon<B: Backend> {
     backend: B,
     allow_experimental: bool,
     fan_mode: FanMode,
+    simulate_telemetry: bool,
 }
 
 impl<B: Backend> Daemon<B> {
@@ -21,7 +22,15 @@ impl<B: Backend> Daemon<B> {
             backend,
             allow_experimental,
             fan_mode: FanMode::Auto,
+            simulate_telemetry: false,
         }
+    }
+
+    /// Used by the GUI's in-process mock so dashboards can be developed on
+    /// machines with no hwmon data; responses stay labelled `simulated=true`.
+    pub fn with_simulated_telemetry(mut self) -> Self {
+        self.simulate_telemetry = true;
+        self
     }
 
     /// Handle one request line and return the response line.
@@ -39,6 +48,10 @@ impl<B: Backend> Daemon<B> {
                 self.backend.name(),
                 describe_fan_mode(self.fan_mode),
                 self.allow_experimental
+            ),
+            Request::Telemetry => format!(
+                "ok {}",
+                crate::telemetry::read(self.simulate_telemetry).to_line()
             ),
             Request::Operation(operation) => self.apply(operation),
         }
@@ -142,6 +155,22 @@ mod tests {
         assert!(locked.handle_line("boost").starts_with("err"));
         let mut opted_in = daemon(true);
         assert!(opted_in.handle_line("boost").starts_with("ok"));
+    }
+
+    #[test]
+    fn telemetry_is_a_read_only_request() {
+        let mut daemon = daemon(false);
+        let response = daemon.handle_line("telemetry");
+        assert!(response.starts_with("ok cpu_temp="));
+        assert!(response.contains("simulated=false"));
+        assert!(daemon.backend().applied.is_empty());
+        let mut simulated =
+            Daemon::new(BLADE_14_2023, DryRunBackend::default(), false).with_simulated_telemetry();
+        assert!(
+            simulated
+                .handle_line("telemetry")
+                .contains("simulated=true")
+        );
     }
 
     #[test]

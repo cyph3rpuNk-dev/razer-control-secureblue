@@ -14,6 +14,7 @@ pub mod daemon;
 pub mod daemon_unix;
 pub mod ipc;
 pub mod protocol;
+pub mod telemetry;
 
 pub const RAZER_VENDOR_ID: u16 = 0x1532;
 pub const BLADE_14_2023_PRODUCT_ID: u16 = 0x029d;
