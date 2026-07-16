@@ -61,6 +61,7 @@ fn build_ui(app: &adw::Application) {
     stack.add_named(&dashboard_page(), Some("dashboard"));
     stack.add_named(&preferences_page(&[&cooling, &status]), Some("performance"));
     stack.add_named(&preferences_page(&[&battery]), Some("battery"));
+    stack.add_named(&display_page(&toast_overlay), Some("display"));
     toast_overlay.set_child(Some(&stack));
 
     // Fill the status rows once at launch.
@@ -78,10 +79,11 @@ fn build_ui(app: &adw::Application) {
         ("Dashboard", "view-grid-symbolic"),
         ("Performance", "power-profile-performance-symbolic"),
         ("Battery", "battery-good-symbolic"),
+        ("Display", "video-display-symbolic"),
     ] {
         sidebar_list.append(&sidebar_row(title, icon));
     }
-    let stack_pages = ["dashboard", "performance", "battery"];
+    let stack_pages = ["dashboard", "performance", "battery", "display"];
     sidebar_list.connect_row_selected(clone!(
         #[weak]
         stack,
@@ -314,6 +316,206 @@ fn build_status_group() -> (
     ));
 
     (group, status_row, power_row, transport_row)
+}
+
+/// Display page: session-level controls that never touch the daemon.
+/// Refresh rate goes through kscreen-doctor (KDE); panel brightness through
+/// logind's SetBrightness D-Bus call, which grants the seat owner write
+/// access without any privilege escalation.  Each group appears only when
+/// its mechanism exists on this session.
+fn display_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
+    let page = adw::PreferencesPage::new();
+    let mut any = false;
+    if let Some(group) = refresh_rate_group(overlay) {
+        page.add(&group);
+        any = true;
+    }
+    if let Some(group) = brightness_group() {
+        page.add(&group);
+        any = true;
+    }
+    if !any {
+        page.add(
+            &adw::PreferencesGroup::builder()
+                .title("Display")
+                .description(
+                    "No controllable displays in this session: kscreen-doctor (KDE) \
+                     and /sys/class/backlight are both unavailable.",
+                )
+                .build(),
+        );
+    }
+    page.upcast()
+}
+
+struct DisplayMode {
+    id: String,
+    label: String,
+    current: bool,
+}
+
+/// `kscreen-doctor -o` for the first enabled output: mode tokens look like
+/// `id:WxH@Hz` with `*` marking the current mode and `!` the preferred one.
+fn kscreen_modes() -> Option<(String, Vec<DisplayMode>)> {
+    let output = std::process::Command::new("kscreen-doctor")
+        .arg("-o")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = strip_ansi(&String::from_utf8_lossy(&output.stdout));
+    for line in text.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.first() != Some(&"Output:") || !line.contains("enabled") {
+            continue;
+        }
+        let name = (*tokens.get(2)?).to_owned();
+        let mut modes = Vec::new();
+        let mut in_modes = false;
+        for token in &tokens {
+            if *token == "Modes:" {
+                in_modes = true;
+                continue;
+            }
+            if in_modes {
+                if !token.contains('@') || !token.contains(':') {
+                    break;
+                }
+                let current = token.contains('*');
+                let cleaned = token.replace(['*', '!'], "");
+                let (id, label) = cleaned.split_once(':')?;
+                modes.push(DisplayMode {
+                    id: id.to_owned(),
+                    label: label.to_owned(),
+                    current,
+                });
+            }
+        }
+        if !modes.is_empty() {
+            return Some((name, modes));
+        }
+    }
+    None
+}
+
+fn strip_ansi(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut in_escape = false;
+    for character in text.chars() {
+        if in_escape {
+            if character.is_ascii_alphabetic() {
+                in_escape = false;
+            }
+        } else if character == '\u{1b}' {
+            in_escape = true;
+        } else {
+            result.push(character);
+        }
+    }
+    result
+}
+
+fn refresh_rate_group(overlay: &adw::ToastOverlay) -> Option<adw::PreferencesGroup> {
+    let (output_name, modes) = kscreen_modes()?;
+    let group = adw::PreferencesGroup::builder()
+        .title("Refresh rate")
+        .description(format!("Active display: {output_name}"))
+        .build();
+
+    let labels: Vec<&str> = modes.iter().map(|mode| mode.label.as_str()).collect();
+    let combo = adw::ComboRow::builder().title("Mode").build();
+    combo.set_model(Some(&gtk::StringList::new(&labels)));
+    apply_synapse_option_factory(&combo);
+    if let Some(current) = modes.iter().position(|mode| mode.current) {
+        combo.set_selected(current as u32);
+    }
+
+    let apply = accent_button("Apply");
+    group.set_header_suffix(Some(&apply));
+    group.add(&combo);
+
+    let mode_ids: Vec<String> = modes.iter().map(|mode| mode.id.clone()).collect();
+    apply.connect_clicked(clone!(
+        #[weak]
+        combo,
+        #[weak]
+        overlay,
+        move |_| {
+            let Some(id) = mode_ids.get(combo.selected() as usize) else {
+                return;
+            };
+            let result = std::process::Command::new("kscreen-doctor")
+                .arg(format!("output.{output_name}.mode.{id}"))
+                .status();
+            feedback(
+                &overlay,
+                match result {
+                    Ok(status) if status.success() => Ok("ok refresh rate applied".to_owned()),
+                    Ok(status) => Err(format!("kscreen-doctor exited with {status}")),
+                    Err(error) => Err(format!("cannot run kscreen-doctor: {error}")),
+                },
+            );
+        }
+    ));
+    Some(group)
+}
+
+/// First backlight device: (name, current, max).
+fn backlight_device() -> Option<(String, u32, u32)> {
+    let entry = std::fs::read_dir("/sys/class/backlight")
+        .ok()?
+        .flatten()
+        .next()?;
+    let name = entry.file_name().to_string_lossy().into_owned();
+    let read_u32 = |file: &str| -> Option<u32> {
+        std::fs::read_to_string(entry.path().join(file))
+            .ok()?
+            .trim()
+            .parse()
+            .ok()
+    };
+    Some((name, read_u32("brightness")?, read_u32("max_brightness")?))
+}
+
+fn brightness_group() -> Option<adw::PreferencesGroup> {
+    let (device, current, max) = backlight_device()?;
+    let group = adw::PreferencesGroup::builder()
+        .title("Panel brightness")
+        .build();
+    let scale = value_scale(
+        0.0,
+        max as f64,
+        (max as f64 / 100.0).max(1.0),
+        current as f64,
+    );
+    group.add(&labelled_scale("Backlight", &scale));
+
+    scale.connect_value_changed(move |scale| {
+        let value = scale.value().round() as u32;
+        let connection =
+            match gtk::gio::bus_get_sync(gtk::gio::BusType::System, gtk::gio::Cancellable::NONE) {
+                Ok(connection) => connection,
+                Err(error) => {
+                    eprintln!("system bus unavailable: {error}");
+                    return;
+                }
+            };
+        if let Err(error) = connection.call_sync(
+            Some("org.freedesktop.login1"),
+            "/org/freedesktop/login1/session/auto",
+            "org.freedesktop.login1.Session",
+            "SetBrightness",
+            Some(&("backlight", device.as_str(), value).to_variant()),
+            None,
+            gtk::gio::DBusCallFlags::NONE,
+            1000,
+            gtk::gio::Cancellable::NONE,
+        ) {
+            eprintln!("SetBrightness failed: {error}");
+        }
+    });
+    Some(group)
 }
 
 const SPARKLINE_CAPACITY: usize = 90;
