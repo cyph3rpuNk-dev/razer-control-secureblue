@@ -44,16 +44,28 @@ fn build_ui(app: &adw::Application) {
     adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
 
     let toast_overlay = adw::ToastOverlay::new();
-    let page = adw::PreferencesPage::new();
 
     let (cooling, fan_combo, rpm_scale) = build_cooling_group(&toast_overlay);
     let (battery, bho_switch, limit_scale) = build_battery_group(&toast_overlay);
     let (status, status_row, power_row, transport_row) = build_status_group();
 
-    page.add(&cooling);
-    page.add(&battery);
-    page.add(&status);
-    toast_overlay.set_child(Some(&page));
+    // Synapse's tab shell.  Display and Lighting join the stack when the
+    // daemon grows those features; no placeholder tabs for capabilities that
+    // do not exist yet.  Icons are provisional pending an on-device look.
+    let stack = adw::ViewStack::new();
+    stack.add_titled_with_icon(
+        &preferences_page(&[&cooling, &status]),
+        Some("performance"),
+        "Performance",
+        "power-profile-performance-symbolic",
+    );
+    stack.add_titled_with_icon(
+        &preferences_page(&[&battery]),
+        Some("battery"),
+        "Battery",
+        "battery-good-symbolic",
+    );
+    toast_overlay.set_child(Some(&stack));
 
     // Fill the status rows once at launch.
     refresh(&status_row, &power_row, &transport_row);
@@ -62,7 +74,13 @@ fn build_ui(app: &adw::Application) {
     rpm_scale.set_sensitive(fan_combo.selected() == 1);
     limit_scale.set_sensitive(bho_switch.is_active());
 
+    let switcher = adw::ViewSwitcher::builder()
+        .stack(&stack)
+        .policy(adw::ViewSwitcherPolicy::Wide)
+        .build();
     let header = adw::HeaderBar::new();
+    header.set_title_widget(Some(&switcher));
+
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
     toolbar.set_content(Some(&toast_overlay));
@@ -70,11 +88,21 @@ fn build_ui(app: &adw::Application) {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Razer Control")
-        .default_width(440)
-        .default_height(700)
+        .default_width(480)
+        .default_height(620)
         .content(&toolbar)
         .build();
     window.present();
+}
+
+/// One tab: an `adw::PreferencesPage` (which supplies Synapse's centered
+/// column via its built-in clamp) holding the given card groups in order.
+fn preferences_page(groups: &[&adw::PreferencesGroup]) -> adw::PreferencesPage {
+    let page = adw::PreferencesPage::new();
+    for group in groups {
+        page.add(*group);
+    }
+    page
 }
 
 fn build_cooling_group(

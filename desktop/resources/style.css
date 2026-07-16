@@ -1,17 +1,47 @@
-/* Synapse-flavoured accent for libadwaita: override the semantic accent colors
- * (the supported theming path short of the libadwaita 1.6 runtime API) to Razer
- * green, and lift the card contrast a touch on the forced-dark scheme. */
+/* Synapse palette, ported from the retired Tauri webui
+ * (webui/src/app/globals.css at commit 0b5c6c5): page #1a1a1a, cards #101010
+ * — darker than the page, the inverse of stock adw-dark — text #d0d0d0,
+ * muted #8a8a8a, borders #2a2a2a, and the official Razer green #44d62c with
+ * near-black text on filled controls.  Overriding libadwaita's named colors
+ * is the supported theming path short of the 1.6 runtime accent API. */
 
-@define-color accent_bg_color #2f9e2a;
-@define-color accent_fg_color #ffffff;
-@define-color accent_color #55d647;
+@define-color accent_bg_color #44d62c;
+@define-color accent_fg_color #0a0a0a;
+@define-color accent_color #44d62c;
+
+@define-color window_bg_color #1a1a1a;
+@define-color window_fg_color #d0d0d0;
+@define-color view_bg_color #101010;
+@define-color view_fg_color #d0d0d0;
+@define-color card_bg_color #101010;
+@define-color card_fg_color #d0d0d0;
+@define-color headerbar_bg_color #1a1a1a;
+@define-color headerbar_fg_color #d0d0d0;
+@define-color popover_bg_color #101010;
+@define-color popover_fg_color #d0d0d0;
 
 .suggested-action {
   font-weight: 700;
 }
 
-/* Slightly brighter cards than default adw-dark, closer to Synapse's panels. */
-preferencesgroup > box > .background,
+/* Synapse card metrics: deep internal padding on rows inside cards. */
+preferencesgroup list.boxed-list > row {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Synapse dropdowns: near-black list, grey hover, green selected option.
+ * (Ported decision from the webui; selectors may need on-device tuning.) */
+popover listview > row:hover {
+  background-color: alpha(#ffffff, 0.06);
+}
+popover listview > row:selected {
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+}
+
+/* Hairline card borders like Synapse's panels. */
+preferencesgroup list.boxed-list,
 .card {
-  background-color: alpha(#ffffff, 0.04);
+  border: 1px solid #2a2a2a;
 }
