@@ -76,6 +76,13 @@ razer-control ctl fan auto
 
 ## Control GUI
 
+| Performance | Battery |
+| --- | --- |
+| ![Performance tab](docs/screenshots/performance.png) | ![Battery tab](docs/screenshots/battery.png) |
+
+*Screenshots from the dry-run build (`RAZER_CONTROL_MOCK=1`); no hardware
+commands are sent.*
+
 `razer-control-desktop` (in [desktop/](desktop/)) is a native
 GTK4/libadwaita app and a pure IPC client: every control sends one line of
 the daemon protocol, and all safety decisions stay in the daemon. It uses
