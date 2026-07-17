@@ -61,12 +61,17 @@ impl<B: Backend> Daemon<B> {
         match request {
             Request::Ping => "ok pong".to_owned(),
             Request::Status => format!(
-                "ok device={:04x}:{:04x} backend={} fan={} profile={} automation_ac={} automation_battery={} kbd={} kbd_effect={} logo={} kbd_ac={} kbd_battery={} experimental={}",
+                "ok device={:04x}:{:04x} backend={} fan={} profile={} bho={} automation_ac={} automation_battery={} kbd={} kbd_effect={} logo={} kbd_ac={} kbd_battery={} experimental={}",
                 self.device.id.vendor_id,
                 self.device.id.product_id,
                 self.backend.name(),
                 describe_fan_mode(self.fan_mode),
                 describe_profile(self.profile),
+                match self.state.battery_health {
+                    BatteryHealth::Unset => "unset".to_owned(),
+                    BatteryHealth::Off => "off".to_owned(),
+                    BatteryHealth::Limit(limit) => limit.to_string(),
+                },
                 self.state
                     .fan_on_ac
                     .map_or("off".to_owned(), describe_fan_mode),
@@ -333,6 +338,16 @@ mod tests {
             daemon.backend().applied,
             vec![RequestedOperation::BatteryHealthOff]
         );
+    }
+
+    #[test]
+    fn status_reports_battery_health_state() {
+        let mut daemon = daemon(false);
+        assert!(daemon.handle_line("status").contains("bho=unset"));
+        daemon.handle_line("bho 80");
+        assert!(daemon.handle_line("status").contains("bho=80"));
+        daemon.handle_line("bho off");
+        assert!(daemon.handle_line("status").contains("bho=off"));
     }
 
     #[test]
