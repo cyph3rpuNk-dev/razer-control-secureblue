@@ -39,6 +39,7 @@ pub struct DeviceCapabilities {
     pub fan_range: FanRange,
     pub supports_battery_health_optimizer: bool,
     pub supports_boost: bool,
+    pub supports_logo_led: bool,
 }
 
 pub const BLADE_14_2023: DeviceCapabilities = DeviceCapabilities {
@@ -55,6 +56,8 @@ pub const BLADE_14_2023: DeviceCapabilities = DeviceCapabilities {
     },
     supports_battery_health_optimizer: true,
     supports_boost: true,
+    // Synapse 4 shows a LOGO control on the maintainer's own unit.
+    supports_logo_led: true,
 };
 
 pub fn find_device(id: DeviceId) -> Option<DeviceCapabilities> {
@@ -67,13 +70,113 @@ pub enum FanMode {
     Manual(u16),
 }
 
+/// CPU/GPU power level inside the Custom profile.  Wire values and names
+/// follow the razer-laptop-control lineage: 0=low, 1=medium, 2=high,
+/// 3=boost (CPU only, and only on models whose table says so).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoostLevel {
+    Low,
+    Medium,
+    High,
+    Boost,
+}
+
+impl BoostLevel {
+    pub fn wire_value(self) -> u8 {
+        match self {
+            Self::Low => 0,
+            Self::Medium => 1,
+            Self::High => 2,
+            Self::Boost => 3,
+        }
+    }
+}
+
+/// Performance profile.  Balanced and Gaming are the EC's own modes 0 and
+/// 1.  Silent and Custom are both EC mode 4 (custom) — Silent is the
+/// fang-razer-linux preset of custom with both boosts pinned low, kept as
+/// a distinct variant so the UI and persistence can show the user's intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Profile {
+    Silent,
+    Balanced,
+    Gaming,
+    Custom { cpu: BoostLevel, gpu: BoostLevel },
+}
+
+impl Profile {
+    /// The mode byte of EC command 0x0d/0x02.
+    pub fn mode_wire_value(self) -> u8 {
+        match self {
+            Self::Balanced => 0,
+            Self::Gaming => 1,
+            Self::Silent | Self::Custom { .. } => 4,
+        }
+    }
+
+    /// The boost pair the profile pins, when it pins one.
+    pub fn boosts(self) -> Option<(BoostLevel, BoostLevel)> {
+        match self {
+            Self::Silent => Some((BoostLevel::Low, BoostLevel::Low)),
+            Self::Custom { cpu, gpu } => Some((cpu, gpu)),
+            Self::Balanced | Self::Gaming => None,
+        }
+    }
+}
+
+/// Keyboard backlight effect.  Fang's four; ids follow the classic
+/// matrix-effect command shared by revived, fang-protocol, and OpenRazer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LightingEffect {
+    Off,
+    Static { red: u8, green: u8, blue: u8 },
+    Spectrum,
+    Wave,
+}
+
+/// Lid logo LED mode (the snake).  Present on the Blade 14 (2023):
+/// Synapse 4 exposes a LOGO control on the maintainer's unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogoMode {
+    Off,
+    Static,
+    Breathing,
+}
+
+/// Daemon-tracked EC state that the wire encoding of *other* operations
+/// depends on: the mode byte rides along in every fan-state packet, and the
+/// manual-fan flag rides along in every profile packet.  Without this a fan
+/// toggle would silently reset the EC to Balanced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EcContext {
+    pub profile: Profile,
+    pub fan_manual: bool,
+}
+
+impl Default for EcContext {
+    fn default() -> Self {
+        Self {
+            profile: Profile::Balanced,
+            fan_manual: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestedOperation {
     Fan(FanMode),
     BatteryHealthLimit(u8),
     BatteryHealthOff,
-    Boost,
-    GpuTdpWatts(u16),
+    /// Experimental until Phase 3 verifies the perf-mode packets on
+    /// hardware; the daemon refuses it without the opt-in flag.
+    Profile(Profile),
+    /// Keyboard backlight brightness in percent (0-100).  Experimental
+    /// until Phase 3 verifies the lighting packets on hardware.
+    KeyboardBrightness(u8),
+    /// Keyboard backlight effect.  Experimental, as above.
+    KeyboardEffect(LightingEffect),
+    /// Lid logo LED mode.  Experimental, and gated on the device table.
+    Logo(LogoMode),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +184,7 @@ pub enum PolicyError {
     UnsupportedDevice(DeviceId),
     FanOutOfRange { requested: u16, range: FanRange },
     InvalidChargeLimit(u8),
+    InvalidBrightness(u8),
     FeatureUnsupported(&'static str),
     ExperimentalFeatureDisabled(&'static str),
 }
@@ -102,6 +206,9 @@ impl std::fmt::Display for PolicyError {
                 f,
                 "battery health limit {limit}% is invalid; choose a value from 50% through 80%",
             ),
+            Self::InvalidBrightness(value) => {
+                write!(f, "brightness {value}% is invalid; choose 0% through 100%")
+            }
             Self::FeatureUnsupported(feature) => {
                 write!(f, "{feature} is not supported on this device")
             }
@@ -144,11 +251,48 @@ pub fn validate_operation(
         RequestedOperation::BatteryHealthOff => {
             Err(PolicyError::FeatureUnsupported("battery health optimizer"))
         }
-        RequestedOperation::Boost if device.supports_boost && allow_experimental => Ok(()),
-        RequestedOperation::Boost => Err(PolicyError::ExperimentalFeatureDisabled("boost control")),
-        RequestedOperation::GpuTdpWatts(_) if allow_experimental => Ok(()),
-        RequestedOperation::GpuTdpWatts(_) => {
-            Err(PolicyError::ExperimentalFeatureDisabled("GPU TDP control"))
+        RequestedOperation::KeyboardBrightness(percent) => {
+            if !allow_experimental {
+                return Err(PolicyError::ExperimentalFeatureDisabled(
+                    "keyboard lighting",
+                ));
+            }
+            if percent > 100 {
+                return Err(PolicyError::InvalidBrightness(percent));
+            }
+            Ok(())
+        }
+        RequestedOperation::KeyboardEffect(_) if allow_experimental => Ok(()),
+        RequestedOperation::KeyboardEffect(_) => Err(PolicyError::ExperimentalFeatureDisabled(
+            "keyboard lighting",
+        )),
+        RequestedOperation::Logo(_) if !device.supports_logo_led => {
+            Err(PolicyError::FeatureUnsupported("logo LED"))
+        }
+        RequestedOperation::Logo(_) if allow_experimental => Ok(()),
+        RequestedOperation::Logo(_) => {
+            Err(PolicyError::ExperimentalFeatureDisabled("logo lighting"))
+        }
+        RequestedOperation::Profile(profile) => {
+            if !allow_experimental {
+                return Err(PolicyError::ExperimentalFeatureDisabled(
+                    "performance profiles",
+                ));
+            }
+            match profile {
+                // The GPU has no boost level 3 anywhere in the lineage.
+                Profile::Custom {
+                    gpu: BoostLevel::Boost,
+                    ..
+                } => Err(PolicyError::FeatureUnsupported("GPU boost level")),
+                Profile::Custom {
+                    cpu: BoostLevel::Boost,
+                    ..
+                } if !device.supports_boost => {
+                    Err(PolicyError::FeatureUnsupported("CPU boost level"))
+                }
+                _ => Ok(()),
+            }
         }
     }
 }
@@ -243,12 +387,57 @@ mod tests {
     }
 
     #[test]
-    fn keeps_power_tuning_experimental() {
+    fn keeps_performance_profiles_experimental() {
         assert!(matches!(
-            validate_operation(DEVICE, RequestedOperation::Boost, false),
+            validate_operation(DEVICE, RequestedOperation::Profile(Profile::Gaming), false),
             Err(PolicyError::ExperimentalFeatureDisabled(_))
         ));
-        assert!(validate_operation(DEVICE, RequestedOperation::Boost, true).is_ok());
+        assert!(
+            validate_operation(DEVICE, RequestedOperation::Profile(Profile::Gaming), true).is_ok()
+        );
+        assert!(
+            validate_operation(DEVICE, RequestedOperation::Profile(Profile::Silent), true).is_ok()
+        );
+    }
+
+    #[test]
+    fn custom_profile_boost_levels_follow_the_device_table() {
+        let custom = |cpu, gpu| RequestedOperation::Profile(Profile::Custom { cpu, gpu });
+        // The Blade 14 (2023) supports CPU boost level 3.
+        assert!(
+            validate_operation(DEVICE, custom(BoostLevel::Boost, BoostLevel::High), true).is_ok()
+        );
+        // No device supports a GPU "boost" level.
+        assert!(matches!(
+            validate_operation(DEVICE, custom(BoostLevel::Low, BoostLevel::Boost), true),
+            Err(PolicyError::FeatureUnsupported(_))
+        ));
+    }
+
+    #[test]
+    fn keeps_lighting_experimental_and_validates_ranges() {
+        assert!(matches!(
+            validate_operation(DEVICE, RequestedOperation::KeyboardBrightness(50), false),
+            Err(PolicyError::ExperimentalFeatureDisabled(_))
+        ));
+        assert!(
+            validate_operation(DEVICE, RequestedOperation::KeyboardBrightness(50), true).is_ok()
+        );
+        assert!(matches!(
+            validate_operation(DEVICE, RequestedOperation::KeyboardBrightness(101), true),
+            Err(PolicyError::InvalidBrightness(101))
+        ));
+        assert!(
+            validate_operation(
+                DEVICE,
+                RequestedOperation::KeyboardEffect(LightingEffect::Spectrum),
+                true
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_operation(DEVICE, RequestedOperation::Logo(LogoMode::Breathing), true).is_ok()
+        );
     }
 
     #[test]

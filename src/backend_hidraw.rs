@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crate::backend::{Backend, HidCandidate, select_hid_candidate};
 use crate::protocol::{self, Packet, REPORT_LEN, ResponseStatus};
-use crate::{DeviceId, RequestedOperation, find_device};
+use crate::{DeviceId, EcContext, RequestedOperation, find_device};
 
 /// EC settle time between writing a command and reading its response.
 const RESPONSE_DELAY: Duration = Duration::from_micros(1500);
@@ -62,6 +62,18 @@ impl HidrawBackend {
     }
 
     fn send_packet(&self, packet: &Packet) -> Result<(), String> {
+        self.exchange(packet).map(|_| ())
+    }
+
+    /// Sends a query packet and returns the full successful response report;
+    /// callers decode args via [`protocol::RESPONSE_ARGS_OFFSET`].  Phase 3
+    /// verification uses this for the read-only 0x8x commands before any
+    /// write is attempted.
+    pub fn query(&self, packet: &Packet) -> Result<[u8; REPORT_LEN], String> {
+        self.exchange(packet)
+    }
+
+    fn exchange(&self, packet: &Packet) -> Result<[u8; REPORT_LEN], String> {
         let report = packet.to_feature_report();
         for attempt in 0..2 {
             self.device
@@ -89,7 +101,7 @@ impl HidrawBackend {
                     if !packet.matches_response(&response) {
                         return Err("EC answered a different command".to_owned());
                     }
-                    return Ok(());
+                    return Ok(response);
                 }
                 Some(ResponseStatus::NotSupported) => {
                     return Err("EC reports this command as unsupported".to_owned());
@@ -107,15 +119,19 @@ impl Backend for HidrawBackend {
         "hidraw"
     }
 
-    fn apply(&mut self, device: DeviceId, operation: RequestedOperation) -> Result<(), String> {
+    fn apply(
+        &mut self,
+        device: DeviceId,
+        operation: RequestedOperation,
+        context: EcContext,
+    ) -> Result<(), String> {
         if device != self.id {
             return Err(format!(
                 "backend holds {:04x}:{:04x}, not {:04x}:{:04x}",
                 self.id.vendor_id, self.id.product_id, device.vendor_id, device.product_id
             ));
         }
-        let packets = protocol::operation_packets(operation).map_err(|error| error.to_string())?;
-        for packet in &packets {
+        for packet in &protocol::operation_packets(operation, context) {
             self.send_packet(packet)?;
         }
         Ok(())

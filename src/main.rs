@@ -6,7 +6,7 @@ use razer_control_secureblue::{
 
 fn usage() {
     eprintln!(
-        "Usage:\n  razer-control device <vendor-hex> <product-hex>\n  razer-control validate fan auto\n  razer-control validate fan manual <rpm>\n  razer-control validate bho <50-80>\n  razer-control validate boost [--experimental]\n  razer-control validate gpu-tdp <watts> [--experimental]\n  razer-control daemon [--experimental] [--backend dry-run|hidraw]\n  razer-control ctl <request...>   (e.g. ctl fan manual 3000, ctl status)\n  razer-control udev-rule"
+        "Usage:\n  razer-control device <vendor-hex> <product-hex>\n  razer-control validate fan auto\n  razer-control validate fan manual <rpm>\n  razer-control validate bho <50-80>\n  razer-control validate profile <silent|balanced|gaming> [--experimental]\n  razer-control validate profile custom cpu <level> gpu <level> [--experimental]\n  razer-control probe   (read-only EC state dump; hidraw builds only)\n  razer-control daemon [--experimental] [--backend dry-run|hidraw]\n  razer-control ctl <request...>   (e.g. ctl fan manual 3000, ctl status)\n  razer-control udev-rule"
     );
 }
 
@@ -55,6 +55,40 @@ fn parse_backend_flag(rest: &[String]) -> Result<BackendChoice, String> {
     }
 }
 
+/// Read-only EC state dump for Phase 3 verification: power mode, boost
+/// levels, fan setpoints, and BHO, via the 0x8x query commands.  Nothing
+/// here writes to the EC.
+#[cfg(feature = "hidraw-backend")]
+fn run_probe() -> Result<String, String> {
+    use razer_control_secureblue::backend_hidraw::HidrawBackend;
+    use razer_control_secureblue::protocol::{self, RESPONSE_ARGS_OFFSET, Zone};
+    let backend = HidrawBackend::open(current_supported_device())?;
+    let arg =
+        |report: &[u8; protocol::REPORT_LEN], index: usize| report[RESPONSE_ARGS_OFFSET + index];
+    let mut out = String::new();
+    for (name, zone) in [("cpu", Zone::Cpu), ("gpu", Zone::Gpu)] {
+        let mode = backend.query(&protocol::get_power_mode(zone))?;
+        let boost = backend.query(&protocol::get_boost(zone))?;
+        let setpoint = backend.query(&protocol::get_fan_setpoint(zone))?;
+        out.push_str(&format!(
+            "{name}: mode={} manual_fan={} boost={} fan_setpoint_rpm={}\n",
+            arg(&mode, 2),
+            arg(&mode, 3),
+            arg(&boost, 2),
+            arg(&setpoint, 2) as u16 * 100,
+        ));
+    }
+    let bho = backend.query(&protocol::get_battery_health())?;
+    let (enabled, threshold) = protocol::decode_battery_health(arg(&bho, 0));
+    out.push_str(&format!("bho: enabled={enabled} threshold={threshold}%"));
+    Ok(out)
+}
+
+#[cfg(not(feature = "hidraw-backend"))]
+fn run_probe() -> Result<String, String> {
+    Err("probe requires a build with the hidraw-backend feature".to_owned())
+}
+
 #[cfg(unix)]
 fn send_to_daemon(command: &str) -> Result<String, String> {
     razer_control_secureblue::daemon_unix::send(command)
@@ -84,6 +118,7 @@ fn main() -> ExitCode {
             })
         }
         [command] if command == "udev-rule" => Ok(blade_14_2023_udev_rule().to_owned()),
+        [command] if command == "probe" => run_probe(),
         [command, rest @ ..] if command == "validate" && !rest.is_empty() => {
             let experimental = rest.iter().any(|argument| argument == "--experimental");
             let tokens: Vec<&str> = rest

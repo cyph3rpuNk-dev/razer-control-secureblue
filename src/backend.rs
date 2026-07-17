@@ -4,7 +4,7 @@
 //! feature) exists now that the protocol layer is pinned by golden-byte
 //! tests, and must be selected explicitly at runtime.
 
-use crate::{DeviceId, RequestedOperation};
+use crate::{DeviceId, EcContext, RequestedOperation};
 
 /// Which backend the daemon drives, chosen on the command line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,13 +59,23 @@ pub fn select_hid_candidate(expected: DeviceId, candidates: &[HidCandidate]) -> 
 
 pub trait Backend {
     fn name(&self) -> &'static str;
-    fn apply(&mut self, device: DeviceId, operation: RequestedOperation) -> Result<(), String>;
+    /// `context` is the daemon's current EC state; the wire encoding of fan
+    /// and profile operations each re-asserts part of the other's state.
+    fn apply(
+        &mut self,
+        device: DeviceId,
+        operation: RequestedOperation,
+        context: EcContext,
+    ) -> Result<(), String>;
 }
 
 /// Logs every accepted operation instead of touching hardware.
 #[derive(Debug, Default)]
 pub struct DryRunBackend {
     pub applied: Vec<RequestedOperation>,
+    /// The context each operation was applied under, index-aligned with
+    /// `applied`; tests use it to prove state rides along correctly.
+    pub contexts: Vec<EcContext>,
 }
 
 impl Backend for DryRunBackend {
@@ -73,12 +83,18 @@ impl Backend for DryRunBackend {
         "dry-run"
     }
 
-    fn apply(&mut self, device: DeviceId, operation: RequestedOperation) -> Result<(), String> {
+    fn apply(
+        &mut self,
+        device: DeviceId,
+        operation: RequestedOperation,
+        context: EcContext,
+    ) -> Result<(), String> {
         eprintln!(
-            "dry-run: would send {operation:?} to {:04x}:{:04x}",
+            "dry-run: would send {operation:?} (context {context:?}) to {:04x}:{:04x}",
             device.vendor_id, device.product_id
         );
         self.applied.push(operation);
+        self.contexts.push(context);
         Ok(())
     }
 }

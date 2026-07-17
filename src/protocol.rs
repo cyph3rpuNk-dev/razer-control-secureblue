@@ -11,7 +11,7 @@
 //! and feeds these buffers to `send_feature_report`; this module exists so
 //! the exact bytes for every operation are locked down by tests first.
 
-use crate::{FanMode, RequestedOperation};
+use crate::{BoostLevel, EcContext, FanMode, LightingEffect, LogoMode, RequestedOperation};
 
 /// Feature-report buffer length, including the leading HID report number.
 pub const REPORT_LEN: usize = 91;
@@ -76,24 +76,6 @@ pub fn response_status(report: &[u8; REPORT_LEN]) -> Option<ResponseStatus> {
     ResponseStatus::from_wire(report[1])
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ProtocolError {
-    /// The operation passed policy but has no wire encoding yet.
-    NotImplemented(&'static str),
-}
-
-impl std::fmt::Display for ProtocolError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotImplemented(operation) => {
-                write!(f, "{operation} has no verified wire encoding yet")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ProtocolError {}
-
 /// One EC command, not yet serialised.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
@@ -146,18 +128,55 @@ pub fn crc(buf: &[u8; REPORT_LEN]) -> u8 {
     buf[2..88].iter().fold(0, |acc, byte| acc ^ byte)
 }
 
-/// Fan auto/manual toggle, per zone.  This is the EC's combined
-/// performance-mode command: args are [0x00, zone, mode, manual_flag].
-/// Until the daemon tracks a performance-mode state, mode is pinned to
-/// 0x00 (Balanced), matching the lineage's default.
-fn set_fan_state(zone: Zone, manual: bool) -> Packet {
+/// The EC's combined performance-mode/fan-state command: args are
+/// [0x00, zone, mode, manual_flag].  Both the fan operations and the
+/// profile operation build this packet, which is why every operation takes
+/// an [`EcContext`] — each side must re-assert the other's current byte.
+/// Mode bytes: 0 Balanced, 1 Gaming, 4 Custom (razer-control-revived
+/// `set_power`, fang-protocol `set_power_mode`; the sources agree).
+fn set_power_mode(zone: Zone, mode: u8, manual: bool) -> Packet {
     Packet::new(
         0x0d,
         0x02,
         0x04,
-        &[0x00, zone.wire_value(), 0x00, manual as u8],
+        &[0x00, zone.wire_value(), mode, manual as u8],
     )
 }
+
+/// CPU/GPU power level for the Custom profile: args [0x00, zone, level].
+/// Levels 0..=3; policy validation keeps level 3 CPU-only and gated on the
+/// device table before this is ever built.
+fn set_boost(zone: Zone, level: BoostLevel) -> Packet {
+    Packet::new(
+        0x0d,
+        0x07,
+        0x03,
+        &[0x00, zone.wire_value(), level.wire_value()],
+    )
+}
+
+/// Query for the current mode and manual flag of one zone; the response
+/// echoes them in args[2] and args[3].  Phase 3 verification reads these
+/// before any write is attempted.
+pub fn get_power_mode(zone: Zone) -> Packet {
+    Packet::new(0x0d, 0x82, 0x04, &[0x00, zone.wire_value()])
+}
+
+/// Query for one zone's boost level; the response carries it in args[2].
+pub fn get_boost(zone: Zone) -> Packet {
+    Packet::new(0x0d, 0x87, 0x03, &[0x00, zone.wire_value()])
+}
+
+/// Query for one zone's stored manual fan setpoint; the response carries
+/// RPM/100 in args[2].  This is the read-back the device table's fan range
+/// comment has been waiting on.
+pub fn get_fan_setpoint(zone: Zone) -> Packet {
+    Packet::new(0x0d, 0x81, 0x03, &[0x00, zone.wire_value()])
+}
+
+/// Offset of args[0] within a wire report; response decoding indexes from
+/// here (args[i] = report[RESPONSE_ARGS_OFFSET + i]).
+pub const RESPONSE_ARGS_OFFSET: usize = OFFSET_ARGS;
 
 /// Manual fan target, per zone.  The EC takes RPM in hundreds; policy
 /// validation guarantees the verified range before this is ever built.
@@ -169,6 +188,44 @@ fn set_fan_rpm(zone: Zone, rpm: u16) -> Packet {
         0x03,
         &[0x00, zone.wire_value(), (rpm / 100) as u8],
     )
+}
+
+/// Classic LED addressing used by the lighting commands (class 0x03).
+/// razer-control-revived and fang-protocol agree on this family for the
+/// Blade lineage; OpenRazer's razerkbd also routes the Blade 14 (2023)
+/// matrix effects through it.  Should Phase 3's read-back disagree, the
+/// known alternative for brightness is OpenRazer's blade-misc variant
+/// (class 0x0e, ids 0x04/0x84) with the identical argument triple.
+const VARSTORE: u8 = 0x01;
+const LOGO_LED: u8 = 0x04;
+const BACKLIGHT_LED: u8 = 0x05;
+
+/// Keyboard backlight brightness, 0-255 (the daemon scales from percent).
+fn set_keyboard_brightness(value: u8) -> Packet {
+    Packet::new(0x03, 0x03, 0x03, &[VARSTORE, BACKLIGHT_LED, value])
+}
+
+/// Query for the current keyboard brightness; the response carries the
+/// 0-255 value in args[2].
+pub fn get_keyboard_brightness() -> Packet {
+    Packet::new(0x03, 0x83, 0x03, &[VARSTORE, BACKLIGHT_LED, 0x00])
+}
+
+/// Logo LED on/off.
+fn set_logo_state(on: bool) -> Packet {
+    Packet::new(0x03, 0x00, 0x03, &[VARSTORE, LOGO_LED, on as u8])
+}
+
+/// Logo LED effect: 0x00 static, 0x02 breathing (classic led-effect ids).
+fn set_logo_effect(effect: u8) -> Packet {
+    Packet::new(0x03, 0x02, 0x03, &[VARSTORE, LOGO_LED, effect])
+}
+
+/// Keyboard matrix effect (classic 0x03/0x0a): ids and payload sizes are
+/// OpenRazer's standard set — none 0x00, wave 0x01 + direction, spectrum
+/// 0x04, static 0x06 + rgb.
+fn matrix_effect(args: &[u8]) -> Packet {
+    Packet::new(0x03, 0x0a, args.len() as u8, args)
 }
 
 /// Battery Health Optimizer: bit 7 is the enable flag, bits 0..=6 the
@@ -196,29 +253,60 @@ pub fn decode_battery_health(byte: u8) -> (bool, u8) {
 /// The packet sequence implementing one accepted operation.
 ///
 /// Callers must have run [`crate::validate_operation`] first: this function
-/// encodes, it does not police.  When the daemon turns fans manual it flips
-/// both zones before writing either RPM so the EC never applies a target in
-/// automatic mode.
-pub fn operation_packets(operation: RequestedOperation) -> Result<Vec<Packet>, ProtocolError> {
+/// encodes, it does not police.  `context` carries the daemon's current EC
+/// state: fan operations re-assert the active profile's mode byte, and the
+/// profile operation re-asserts the fan manual flag — without it either
+/// side would silently reset the other.  When the daemon turns fans manual
+/// it flips both zones before writing either RPM so the EC never applies a
+/// target in automatic mode.
+pub fn operation_packets(operation: RequestedOperation, context: EcContext) -> Vec<Packet> {
+    let mode = context.profile.mode_wire_value();
     match operation {
-        RequestedOperation::Fan(FanMode::Auto) => Ok(Zone::ALL
+        RequestedOperation::Fan(FanMode::Auto) => Zone::ALL
             .iter()
-            .map(|&zone| set_fan_state(zone, false))
-            .collect()),
-        RequestedOperation::Fan(FanMode::Manual(rpm)) => Ok(Zone::ALL
+            .map(|&zone| set_power_mode(zone, mode, false))
+            .collect(),
+        RequestedOperation::Fan(FanMode::Manual(rpm)) => Zone::ALL
             .iter()
-            .map(|&zone| set_fan_state(zone, true))
+            .map(|&zone| set_power_mode(zone, mode, true))
             .chain(Zone::ALL.iter().map(|&zone| set_fan_rpm(zone, rpm)))
-            .collect()),
+            .collect(),
         RequestedOperation::BatteryHealthLimit(threshold) => {
-            Ok(vec![set_battery_health(true, threshold)])
+            vec![set_battery_health(true, threshold)]
         }
         // Disabling keeps the last threshold in place with the flag cleared,
         // as the lineage does; 80 is the conservative default when none is
         // tracked yet.
-        RequestedOperation::BatteryHealthOff => Ok(vec![set_battery_health(false, 80)]),
-        RequestedOperation::Boost => Err(ProtocolError::NotImplemented("boost control")),
-        RequestedOperation::GpuTdpWatts(_) => Err(ProtocolError::NotImplemented("GPU TDP control")),
+        RequestedOperation::BatteryHealthOff => vec![set_battery_health(false, 80)],
+        RequestedOperation::Profile(profile) => {
+            let new_mode = profile.mode_wire_value();
+            let mut packets: Vec<Packet> = Zone::ALL
+                .iter()
+                .map(|&zone| set_power_mode(zone, new_mode, context.fan_manual))
+                .collect();
+            if let Some((cpu, gpu)) = profile.boosts() {
+                packets.push(set_boost(Zone::Cpu, cpu));
+                packets.push(set_boost(Zone::Gpu, gpu));
+            }
+            packets
+        }
+        // Brightness comes in as percent; the wire wants 0-255.
+        RequestedOperation::KeyboardBrightness(percent) => {
+            let value = ((percent as u16 * 255) / 100) as u8;
+            vec![set_keyboard_brightness(value)]
+        }
+        RequestedOperation::KeyboardEffect(effect) => vec![match effect {
+            LightingEffect::Off => matrix_effect(&[0x00]),
+            // Direction 1 (left-to-right); the lineage's default.
+            LightingEffect::Wave => matrix_effect(&[0x01, 0x01]),
+            LightingEffect::Spectrum => matrix_effect(&[0x04]),
+            LightingEffect::Static { red, green, blue } => matrix_effect(&[0x06, red, green, blue]),
+        }],
+        RequestedOperation::Logo(mode) => match mode {
+            LogoMode::Off => vec![set_logo_state(false)],
+            LogoMode::Static => vec![set_logo_state(true), set_logo_effect(0x00)],
+            LogoMode::Breathing => vec![set_logo_state(true), set_logo_effect(0x02)],
+        },
     }
 }
 
@@ -240,9 +328,15 @@ mod tests {
         buf
     }
 
+    use crate::Profile;
+
+    fn balanced() -> EcContext {
+        EcContext::default()
+    }
+
     #[test]
     fn fan_auto_reverts_both_zones() {
-        let packets = operation_packets(RequestedOperation::Fan(FanMode::Auto)).unwrap();
+        let packets = operation_packets(RequestedOperation::Fan(FanMode::Auto), balanced());
         let reports: Vec<_> = packets.iter().map(Packet::to_feature_report).collect();
         assert_eq!(
             reports,
@@ -255,7 +349,7 @@ mod tests {
 
     #[test]
     fn fan_manual_3000_rpm_flips_both_zones_manual_before_any_rpm_write() {
-        let packets = operation_packets(RequestedOperation::Fan(FanMode::Manual(3000))).unwrap();
+        let packets = operation_packets(RequestedOperation::Fan(FanMode::Manual(3000)), balanced());
         let reports: Vec<_> = packets.iter().map(Packet::to_feature_report).collect();
         assert_eq!(
             reports,
@@ -269,24 +363,197 @@ mod tests {
     }
 
     #[test]
+    fn fan_operations_preserve_the_active_profile_mode_byte() {
+        // A fan toggle while Gaming is active must keep mode byte 1, not
+        // silently reset the EC to Balanced.
+        let gaming = EcContext {
+            profile: Profile::Gaming,
+            fan_manual: false,
+        };
+        let packets = operation_packets(RequestedOperation::Fan(FanMode::Auto), gaming);
+        let reports: Vec<_> = packets.iter().map(Packet::to_feature_report).collect();
+        assert_eq!(
+            reports,
+            vec![
+                golden(0x0d, 0x02, 0x04, &[0x00, 0x01, 0x01, 0x00], 0x14),
+                golden(0x0d, 0x02, 0x04, &[0x00, 0x02, 0x01, 0x00], 0x17),
+            ]
+        );
+    }
+
+    #[test]
     fn fan_rpm_is_sent_in_hundreds_at_the_verified_range_edges() {
         // Blade 14 (2023): 2000 RPM -> 0x14, 5400 RPM -> 0x36.
-        let low = operation_packets(RequestedOperation::Fan(FanMode::Manual(2000))).unwrap();
-        let high = operation_packets(RequestedOperation::Fan(FanMode::Manual(5400))).unwrap();
+        let low = operation_packets(RequestedOperation::Fan(FanMode::Manual(2000)), balanced());
+        let high = operation_packets(RequestedOperation::Fan(FanMode::Manual(5400)), balanced());
         assert_eq!(low[2].to_feature_report()[11], 0x14);
         assert_eq!(high[2].to_feature_report()[11], 0x36);
     }
 
     #[test]
+    fn gaming_profile_sets_mode_1_on_both_zones_and_no_boost_packets() {
+        let packets = operation_packets(RequestedOperation::Profile(Profile::Gaming), balanced());
+        let reports: Vec<_> = packets.iter().map(Packet::to_feature_report).collect();
+        assert_eq!(
+            reports,
+            vec![
+                golden(0x0d, 0x02, 0x04, &[0x00, 0x01, 0x01, 0x00], 0x14),
+                golden(0x0d, 0x02, 0x04, &[0x00, 0x02, 0x01, 0x00], 0x17),
+            ]
+        );
+    }
+
+    #[test]
+    fn silent_profile_is_custom_mode_with_both_boosts_low() {
+        let packets = operation_packets(RequestedOperation::Profile(Profile::Silent), balanced());
+        let reports: Vec<_> = packets.iter().map(Packet::to_feature_report).collect();
+        assert_eq!(
+            reports,
+            vec![
+                golden(0x0d, 0x02, 0x04, &[0x00, 0x01, 0x04, 0x00], 0x11),
+                golden(0x0d, 0x02, 0x04, &[0x00, 0x02, 0x04, 0x00], 0x12),
+                golden(0x0d, 0x07, 0x03, &[0x00, 0x01, 0x00], 0x17),
+                golden(0x0d, 0x07, 0x03, &[0x00, 0x02, 0x00], 0x14),
+            ]
+        );
+    }
+
+    #[test]
+    fn custom_profile_writes_mode_4_then_each_zone_boost() {
+        let custom = RequestedOperation::Profile(Profile::Custom {
+            cpu: BoostLevel::Boost,
+            gpu: BoostLevel::High,
+        });
+        let packets = operation_packets(custom, balanced());
+        let reports: Vec<_> = packets.iter().map(Packet::to_feature_report).collect();
+        assert_eq!(
+            reports,
+            vec![
+                golden(0x0d, 0x02, 0x04, &[0x00, 0x01, 0x04, 0x00], 0x11),
+                golden(0x0d, 0x02, 0x04, &[0x00, 0x02, 0x04, 0x00], 0x12),
+                golden(0x0d, 0x07, 0x03, &[0x00, 0x01, 0x03], 0x14),
+                golden(0x0d, 0x07, 0x03, &[0x00, 0x02, 0x02], 0x16),
+            ]
+        );
+    }
+
+    #[test]
+    fn profile_packets_preserve_the_manual_fan_flag() {
+        let manual_fans = EcContext {
+            profile: Profile::Balanced,
+            fan_manual: true,
+        };
+        let packets = operation_packets(RequestedOperation::Profile(Profile::Gaming), manual_fans);
+        // args[3] (wire offset 12) is the manual flag on both zone packets.
+        assert_eq!(packets[0].to_feature_report()[12], 0x01);
+        assert_eq!(packets[1].to_feature_report()[12], 0x01);
+    }
+
+    #[test]
+    fn perf_query_packets_use_the_read_command_ids() {
+        assert_eq!(
+            get_power_mode(Zone::Cpu).to_feature_report(),
+            golden(0x0d, 0x82, 0x04, &[0x00, 0x01], 0x95)
+        );
+        assert_eq!(
+            get_boost(Zone::Gpu).to_feature_report(),
+            golden(0x0d, 0x87, 0x03, &[0x00, 0x02], 0x94)
+        );
+        assert_eq!(
+            get_fan_setpoint(Zone::Cpu).to_feature_report(),
+            golden(0x0d, 0x81, 0x03, &[0x00, 0x01], 0x91)
+        );
+    }
+
+    #[test]
+    fn keyboard_brightness_scales_percent_to_wire_range() {
+        // 50% -> 127 (0x7f), 100% -> 255, 0% -> 0.
+        let half = operation_packets(RequestedOperation::KeyboardBrightness(50), balanced());
+        let reports: Vec<_> = half.iter().map(Packet::to_feature_report).collect();
+        assert_eq!(
+            reports,
+            vec![golden(0x03, 0x03, 0x03, &[0x01, 0x05, 0x7f], 0x67)]
+        );
+        let full = operation_packets(RequestedOperation::KeyboardBrightness(100), balanced());
+        assert_eq!(full[0].to_feature_report()[11], 0xff);
+        let off = operation_packets(RequestedOperation::KeyboardBrightness(0), balanced());
+        assert_eq!(off[0].to_feature_report()[11], 0x00);
+    }
+
+    #[test]
+    fn keyboard_brightness_query_uses_the_read_command_id() {
+        assert_eq!(
+            get_keyboard_brightness().to_feature_report(),
+            golden(0x03, 0x83, 0x03, &[0x01, 0x05, 0x00], 0x98)
+        );
+    }
+
+    #[test]
+    fn keyboard_effects_use_the_classic_matrix_ids() {
+        let effect =
+            |effect| operation_packets(RequestedOperation::KeyboardEffect(effect), balanced());
+        assert_eq!(
+            effect(LightingEffect::Off)[0].to_feature_report(),
+            golden(0x03, 0x0a, 0x01, &[0x00], 0x17)
+        );
+        assert_eq!(
+            effect(LightingEffect::Wave)[0].to_feature_report(),
+            golden(0x03, 0x0a, 0x02, &[0x01, 0x01], 0x14)
+        );
+        assert_eq!(
+            effect(LightingEffect::Spectrum)[0].to_feature_report(),
+            golden(0x03, 0x0a, 0x01, &[0x04], 0x13)
+        );
+        // Razer green #44d62c.
+        assert_eq!(
+            effect(LightingEffect::Static {
+                red: 0x44,
+                green: 0xd6,
+                blue: 0x2c
+            })[0]
+                .to_feature_report(),
+            golden(0x03, 0x0a, 0x04, &[0x06, 0x44, 0xd6, 0x2c], 0xaa)
+        );
+    }
+
+    #[test]
+    fn logo_modes_drive_led_state_then_effect() {
+        let logo = |mode| operation_packets(RequestedOperation::Logo(mode), balanced());
+        let off: Vec<_> = logo(LogoMode::Off)
+            .iter()
+            .map(Packet::to_feature_report)
+            .collect();
+        assert_eq!(
+            off,
+            vec![golden(0x03, 0x00, 0x03, &[0x01, 0x04, 0x00], 0x1a)]
+        );
+        let breathing: Vec<_> = logo(LogoMode::Breathing)
+            .iter()
+            .map(Packet::to_feature_report)
+            .collect();
+        assert_eq!(
+            breathing,
+            vec![
+                golden(0x03, 0x00, 0x03, &[0x01, 0x04, 0x01], 0x1b),
+                golden(0x03, 0x02, 0x03, &[0x01, 0x04, 0x02], 0x1a),
+            ]
+        );
+        assert_eq!(
+            logo(LogoMode::Static)[1].to_feature_report(),
+            golden(0x03, 0x02, 0x03, &[0x01, 0x04, 0x00], 0x18)
+        );
+    }
+
+    #[test]
     fn battery_health_limit_sets_the_enable_bit_over_the_threshold() {
-        let packets = operation_packets(RequestedOperation::BatteryHealthLimit(80)).unwrap();
+        let packets = operation_packets(RequestedOperation::BatteryHealthLimit(80), balanced());
         let reports: Vec<_> = packets.iter().map(Packet::to_feature_report).collect();
         assert_eq!(reports, vec![golden(0x07, 0x12, 0x01, &[0xd0], 0xdb)]);
     }
 
     #[test]
     fn battery_health_off_clears_only_the_enable_bit() {
-        let packets = operation_packets(RequestedOperation::BatteryHealthOff).unwrap();
+        let packets = operation_packets(RequestedOperation::BatteryHealthOff, balanced());
         let reports: Vec<_> = packets.iter().map(Packet::to_feature_report).collect();
         assert_eq!(reports, vec![golden(0x07, 0x12, 0x01, &[0x50], 0x5b)]);
     }
@@ -299,18 +566,6 @@ mod tests {
         );
         assert_eq!(decode_battery_health(0xd0), (true, 80));
         assert_eq!(decode_battery_health(0x50), (false, 80));
-    }
-
-    #[test]
-    fn unencoded_operations_are_refused_not_guessed() {
-        assert!(matches!(
-            operation_packets(RequestedOperation::Boost),
-            Err(ProtocolError::NotImplemented(_))
-        ));
-        assert!(matches!(
-            operation_packets(RequestedOperation::GpuTdpWatts(80)),
-            Err(ProtocolError::NotImplemented(_))
-        ));
     }
 
     #[test]
