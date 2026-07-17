@@ -1,89 +1,142 @@
-/* Synapse palette, ported from the retired Tauri webui
- * (webui/src/app/globals.css at commit 0b5c6c5): page #1a1a1a, cards #101010
- * — darker than the page, the inverse of stock adw-dark — text #d0d0d0,
- * muted #8a8a8a, borders #2a2a2a, and the official Razer green #44d62c with
- * near-black text on filled controls.  Overriding libadwaita's named colors
- * is the supported theming path short of the 1.6 runtime accent API. */
+/* Fang visual language (fang-razer-linux, GPL-2.0, credited in README):
+ * near-black page over slightly-lighter cards with hairline borders, the
+ * official Razer green #44d62c as the only accent, and terminal-flavoured
+ * monospace uppercase captions with wide letter-spacing.  Palette read off
+ * Fang's v0.9.0 screenshots: sidebar #0b0e0c, content #0e100f, cards
+ * #131615, borders #202623, muted text in green-tinted greys.  Overriding
+ * libadwaita's named colors is the supported theming path short of the 1.6
+ * runtime accent API. */
 
 @define-color accent_bg_color #44d62c;
-@define-color accent_fg_color #0a0a0a;
+@define-color accent_fg_color #0a0f0a;
 @define-color accent_color #44d62c;
 
-@define-color window_bg_color #1a1a1a;
-@define-color window_fg_color #d0d0d0;
-@define-color view_bg_color #101010;
-@define-color view_fg_color #d0d0d0;
-@define-color card_bg_color #101010;
-@define-color card_fg_color #d0d0d0;
-@define-color headerbar_bg_color #1a1a1a;
-@define-color headerbar_fg_color #d0d0d0;
-@define-color popover_bg_color #101010;
-@define-color popover_fg_color #d0d0d0;
+@define-color window_bg_color #0e100f;
+@define-color window_fg_color #e4e8e4;
+@define-color view_bg_color #131615;
+@define-color view_fg_color #e4e8e4;
+@define-color card_bg_color #131615;
+@define-color card_fg_color #e4e8e4;
+@define-color headerbar_bg_color #0b0e0c;
+@define-color headerbar_fg_color #e4e8e4;
+@define-color popover_bg_color #151918;
+@define-color popover_fg_color #e4e8e4;
 
-.suggested-action {
-  font-weight: 700;
+/* Fang has no visible titlebar chrome: the header bars melt into their
+ * pane so only the brand mark, page title, and window controls remain. */
+headerbar {
+  background-color: transparent;
+  box-shadow: none;
 }
-
-/* Synapse card metrics: deep internal padding on rows inside cards. */
-preferencesgroup list.boxed-list > row {
-  padding-top: 10px;
-  padding-bottom: 10px;
+.fang-sidebar {
+  background-color: #0b0e0c;
 }
-
-/* Synapse dropdowns: near-black list, grey hover, green chosen option.
- * The chosen row is tagged `chosen-option` by the app's popover factory
- * (see apply_synapse_option_factory); GTK's own :selected tracks the list
- * cursor in these popovers, not the chosen value, so it stays unstyled
- * and the cursor/hover highlight is a neutral grey. */
-popover listview row:hover,
-popover listview row:selected {
-  background-color: alpha(#ffffff, 0.06);
-}
-popover listview row.chosen-option,
-popover listview row.chosen-option:hover,
-popover listview row.chosen-option:selected {
-  background-color: @accent_bg_color;
-}
-popover listview row.chosen-option label {
-  color: @accent_fg_color;
+.fang-content {
+  background-color: #0e100f;
 }
 
-/* Hairline card borders like Synapse's panels. */
-preferencesgroup list.boxed-list,
-.card {
-  border: 1px solid #2a2a2a;
+/* Brand mark: app icon plus a wide-tracked wordmark, top-left like FANG's. */
+.brand-name {
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: #f0f3f0;
 }
 
-/* Dashboard cards and type, in Fang's terminal-flavoured style. */
-.dash-card {
-  background-color: #101010;
-  border: 1px solid #2a2a2a;
-  border-radius: 12px;
+/* Uppercase mono page title in the content header ("DASHBOARD"). */
+.page-title {
+  font-family: monospace;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: #8a938c;
+}
+
+/* Section headers above cards ("FAN MODE", "REFRESH RATE"). */
+.section-label {
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #6f7873;
+  margin-top: 8px;
+}
+
+/* Navigation: muted rows, green icon + inset green bar on the active one. */
+.navigation-sidebar {
+  background-color: transparent;
+}
+.navigation-sidebar row {
+  border-radius: 8px;
+  margin-left: 8px;
+  margin-right: 8px;
+  color: #9aa39c;
+}
+.navigation-sidebar row image {
+  color: #7a827c;
+}
+.navigation-sidebar row:hover {
+  background-color: alpha(#ffffff, 0.04);
+}
+.navigation-sidebar row:selected {
+  background-color: alpha(#44d62c, 0.10);
+  box-shadow: inset 3px 0 0 #44d62c;
+  color: #eef1ee;
+}
+.navigation-sidebar row:selected image {
+  color: #44d62c;
+}
+
+/* The Fang card: every panel on every page is one of these. */
+.fang-card {
+  background-color: #131615;
+  border: 1px solid #202623;
+  border-radius: 10px;
   padding: 20px;
 }
+.card-title {
+  font-family: monospace;
+  font-size: 13px;
+  color: #e8ece8;
+}
+.card-subtitle {
+  font-family: monospace;
+  font-size: 11px;
+  color: #7a827c;
+}
+.note-label {
+  font-size: 12px;
+  color: #7a827c;
+}
+
+/* Dashboard type ramp: mono numerals, muted mono captions, green accents. */
 .dash-label {
   font-family: monospace;
   font-size: 11px;
   letter-spacing: 2px;
-  color: #8a8a8a;
+  color: #6f7873;
 }
 .dash-value {
   font-family: monospace;
-  font-size: 34px;
+  font-size: 38px;
   font-weight: 700;
-  color: #e8e8e8;
+  color: #eef1ee;
+}
+.dash-value-accent {
+  font-family: monospace;
+  font-size: 30px;
+  font-weight: 700;
+  color: #44d62c;
 }
 .dash-value-medium {
   font-family: monospace;
   font-size: 20px;
   font-weight: 700;
-  color: #e8e8e8;
+  color: #eef1ee;
 }
 .dash-unit {
   font-family: monospace;
   font-size: 11px;
   letter-spacing: 2px;
-  color: #8a8a8a;
+  color: #6f7873;
 }
 .chart-value,
 .profile-value {
@@ -93,10 +146,180 @@ preferencesgroup list.boxed-list,
   color: #44d62c;
 }
 
-/* Sidebar footer: device identity and transport, like Fang's status box. */
+/* Segmented choice groups: dark pills, green-filled checked segment with
+ * near-black text — Fang's AUTO|MANUAL / SILENT|BALANCED|GAMING controls. */
+.fang-seg button {
+  background-color: #161a18;
+  background-image: none;
+  border: 1px solid #232927;
+  color: #9aa39c;
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 4px 14px;
+  box-shadow: none;
+}
+.fang-seg button:hover {
+  background-color: #1c211e;
+}
+.fang-seg button:checked {
+  background-color: #44d62c;
+  border-color: #44d62c;
+  color: #0a0f0a;
+}
+.fang-seg button:disabled {
+  color: #565e58;
+}
+.fang-seg button:checked:disabled {
+  background-color: #2a352c;
+  border-color: #2a352c;
+  color: #10140f;
+}
+
+/* Ghost button (REFRESH): quiet mono outline, no fill. */
+button.fang-ghost {
+  background-color: #161a18;
+  background-image: none;
+  border: 1px solid #232927;
+  color: #9aa39c;
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  box-shadow: none;
+}
+button.fang-ghost:hover {
+  background-color: #1c211e;
+}
+
+/* Filled action button (APPLY): the accent named colors paint it green. */
+button.suggested-action {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+/* Sliders: dark trough, green progress, white round knob — Fang's sliders. */
+scale trough {
+  background-color: #1c211e;
+}
+scale highlight {
+  background-color: #44d62c;
+}
+scale slider {
+  background-color: #f2f4f2;
+}
+scale value {
+  font-family: monospace;
+  font-size: 12px;
+  color: #cfd6cf;
+}
+scale:disabled highlight {
+  background-color: #26302a;
+}
+scale:disabled slider {
+  background-color: #4a524c;
+}
+
+/* Green in-card heading, Synapse-style ("LAPTOP DISPLAY", "GPU MODE"). */
+.card-heading {
+  color: #44d62c;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+/* Radio/check marks pick up the accent colors; keep their labels calm. */
+checkbutton label {
+  font-size: 13px;
+  color: #cfd6cf;
+}
+
+/* Profile cards: Fang's Silent/Balanced/Gaming/Custom row.  A checked card
+ * gets the green border and lit dot. */
+button.profile-card {
+  background-color: #131615;
+  background-image: none;
+  border: 1px solid #202623;
+  border-radius: 10px;
+  padding: 14px;
+  box-shadow: none;
+}
+button.profile-card:hover {
+  background-color: #161a18;
+}
+button.profile-card:checked {
+  background-color: #131615;
+  border-color: #44d62c;
+}
+button.profile-card image {
+  color: #9aa39c;
+}
+button.profile-card:checked image {
+  color: #44d62c;
+}
+.profile-dot {
+  color: #2a302c;
+  font-size: 8px;
+}
+button.profile-card:checked .profile-dot {
+  color: #44d62c;
+}
+.profile-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e8ece8;
+}
+.profile-desc {
+  font-size: 11px;
+  color: #7a827c;
+}
+
+/* Color swatches for the static keyboard effect. */
+button.swatch {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  border: 2px solid #202623;
+  background-image: none;
+  box-shadow: none;
+}
+button.swatch:checked {
+  border-color: #f0f3f0;
+}
+button.swatch.swatch-0 { background-color: #44d62c; }
+button.swatch.swatch-1 { background-color: #ffffff; }
+button.swatch.swatch-2 { background-color: #ff3a3a; }
+button.swatch.swatch-3 { background-color: #2c7bd6; }
+button.swatch.swatch-4 { background-color: #a02cd6; }
+button.swatch.swatch-5 { background-color: #2cd6c8; }
+
+/* Live power-source badge on the automation rows, like Fang's NOW pill. */
+.now-badge {
+  background-color: #44d62c;
+  color: #0a0f0a;
+  font-family: monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Key/value rows in the status card. */
+.status-value {
+  font-family: monospace;
+  font-size: 12px;
+  color: #cfd6cf;
+}
+
+/* Sidebar footer: green presence dot, device identity, transport in mono —
+ * a mock session must never be mistakable for the real daemon. */
 .sidebar-footer {
   padding: 12px;
-  border-top: 1px solid #242424;
+  border-top: 1px solid #1a1f1c;
 }
 .status-dot {
   color: #44d62c;
@@ -104,10 +327,10 @@ preferencesgroup list.boxed-list,
 }
 .footer-title {
   font-size: 12px;
-  color: #d0d0d0;
+  color: #d3d9d3;
 }
 .footer-subtitle {
   font-family: monospace;
   font-size: 10px;
-  color: #8a8a8a;
+  color: #7a827c;
 }
