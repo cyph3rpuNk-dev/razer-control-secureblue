@@ -10,6 +10,7 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Telemetry {
     pub cpu_temp_celsius: Option<f64>,
+    pub gpu_temp_celsius: Option<f64>,
     pub fan_rpm: Option<u16>,
     pub on_ac: Option<bool>,
     pub simulated: bool,
@@ -18,10 +19,13 @@ pub struct Telemetry {
 impl Telemetry {
     /// One `key=value` response line, `ok`-prefixed by the daemon.
     pub fn to_line(&self) -> String {
-        let cpu = self
-            .cpu_temp_celsius
-            .map(|t| format!("{t:.1}"))
-            .unwrap_or_else(|| "none".to_owned());
+        let temp = |value: Option<f64>| {
+            value
+                .map(|t| format!("{t:.1}"))
+                .unwrap_or_else(|| "none".to_owned())
+        };
+        let cpu = temp(self.cpu_temp_celsius);
+        let gpu = temp(self.gpu_temp_celsius);
         let fan = self
             .fan_rpm
             .map(|rpm| rpm.to_string())
@@ -32,7 +36,7 @@ impl Telemetry {
             None => "unknown",
         };
         format!(
-            "cpu_temp={cpu} fan_rpm={fan} power={power} simulated={}",
+            "cpu_temp={cpu} gpu_temp={gpu} fan_rpm={fan} power={power} simulated={}",
             self.simulated
         )
     }
@@ -44,6 +48,7 @@ pub fn read(simulate: bool) -> Telemetry {
     }
     Telemetry {
         cpu_temp_celsius: cpu_temp_celsius(),
+        gpu_temp_celsius: gpu_temp_celsius(),
         // EC fan read-back is gated on Phase 3 hardware verification.
         fan_rpm: None,
         on_ac: on_ac(),
@@ -59,8 +64,12 @@ fn simulated() -> Telemetry {
         .map(|elapsed| elapsed.as_secs_f64())
         .unwrap_or(0.0);
     let wave = (seconds / 9.0).sin();
+    // The GPU drifts on its own period so the two gauges never move in
+    // lockstep, which would look canned.
+    let gpu_wave = (seconds / 13.0).sin();
     Telemetry {
         cpu_temp_celsius: Some(54.0 + wave * 6.0),
+        gpu_temp_celsius: Some(47.0 + gpu_wave * 5.0),
         fan_rpm: Some((2400.0 + wave * 350.0) as u16),
         on_ac: Some(true),
         simulated: true,
@@ -86,6 +95,47 @@ fn cpu_temp_celsius() -> Option<f64> {
 
 #[cfg(not(target_os = "linux"))]
 fn cpu_temp_celsius() -> Option<f64> {
+    None
+}
+
+/// GPU core temperature.  amdgpu and nouveau publish hwmon nodes; the
+/// NVIDIA proprietary driver (Blade 14 2023 dGPU) does not, so fall back
+/// to `nvidia-smi`.  Caveat, noted for Phase 3: polling nvidia-smi keeps a
+/// PRIME-offloaded dGPU awake, so on real hardware this may want gating on
+/// the GPU's runtime-pm state before the daemon polls at 1 Hz.
+#[cfg(target_os = "linux")]
+fn gpu_temp_celsius() -> Option<f64> {
+    if let Ok(hwmon) = std::fs::read_dir("/sys/class/hwmon") {
+        for entry in hwmon.flatten() {
+            let path = entry.path();
+            let name = std::fs::read_to_string(path.join("name")).unwrap_or_default();
+            if matches!(name.trim(), "amdgpu" | "nouveau") {
+                let raw = std::fs::read_to_string(path.join("temp1_input")).ok()?;
+                let millidegrees: f64 = raw.trim().parse().ok()?;
+                return Some(millidegrees / 1000.0);
+            }
+        }
+    }
+    let output = std::process::Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=temperature.gpu",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn gpu_temp_celsius() -> Option<f64> {
     None
 }
 
@@ -119,6 +169,8 @@ mod tests {
         let telemetry = read(true);
         let cpu = telemetry.cpu_temp_celsius.unwrap();
         assert!((40.0..=70.0).contains(&cpu));
+        let gpu = telemetry.gpu_temp_celsius.unwrap();
+        assert!((40.0..=60.0).contains(&gpu));
         let rpm = telemetry.fan_rpm.unwrap();
         assert!((2000..=2800).contains(&rpm));
         assert!(telemetry.simulated);
@@ -128,23 +180,25 @@ mod tests {
     fn line_format_is_stable_for_clients() {
         let telemetry = Telemetry {
             cpu_temp_celsius: Some(54.31),
+            gpu_temp_celsius: Some(46.99),
             fan_rpm: Some(2441),
             on_ac: Some(true),
             simulated: true,
         };
         assert_eq!(
             telemetry.to_line(),
-            "cpu_temp=54.3 fan_rpm=2441 power=ac simulated=true"
+            "cpu_temp=54.3 gpu_temp=47.0 fan_rpm=2441 power=ac simulated=true"
         );
         let empty = Telemetry {
             cpu_temp_celsius: None,
+            gpu_temp_celsius: None,
             fan_rpm: None,
             on_ac: None,
             simulated: false,
         };
         assert_eq!(
             empty.to_line(),
-            "cpu_temp=none fan_rpm=none power=unknown simulated=false"
+            "cpu_temp=none gpu_temp=none fan_rpm=none power=unknown simulated=false"
         );
     }
 }
