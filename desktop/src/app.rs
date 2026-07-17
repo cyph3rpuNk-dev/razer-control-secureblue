@@ -727,39 +727,78 @@ fn build_automation_card(overlay: &adw::ToastOverlay) -> gtk::Box {
     card
 }
 
-/// Battery page: Battery Health Optimizer as a Fang card — OFF|ON segments
-/// and the charge-limit slider.
+/// Battery page, presented after Synapse 4's BATTERY section: a single
+/// Battery Health Optimizer card with a green in-card heading, a toggle
+/// switch, and the charge-limit slider.  The slider is bounded to the
+/// verified 50–80% range — the UI never offers a limit the daemon would
+/// reject — so it carries marks at both ends rather than Synapse's 0/100.
+/// Everything applies instantly (debounced), like the other restyled
+/// pages; there is no Apply button.
 fn battery_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
-    let card = fang_card(14);
-    let (seg_box, seg) = segmented(&["OFF", "ON"], 0);
-    let limit_scale = value_scale(BHO_MIN_PERCENT, BHO_MAX_PERCENT, 5.0, 80.0);
-    limit_scale.set_sensitive(false);
-    let limit_box = labelled_scale("CHARGE LIMIT — %", &limit_scale);
-    let apply = accent_button("APPLY");
-    apply.set_halign(gtk::Align::End);
-    card.append(&seg_box);
-    card.append(&limit_box);
-    card.append(&note_label(
-        "Caps charging to protect long-term battery health.",
-    ));
-    card.append(&apply);
+    // Initialise from the daemon: bho is "unset"/"off" or the limit number.
+    let bho = request_fields("status").get("bho").cloned();
+    let (enabled, limit) = match bho.as_deref().and_then(|value| value.parse::<f64>().ok()) {
+        Some(value) => (true, value.clamp(BHO_MIN_PERCENT, BHO_MAX_PERCENT)),
+        None => (false, BHO_MAX_PERCENT),
+    };
 
-    let on_button = seg[1].clone();
-    on_button.connect_toggled(clone!(
-        #[weak]
-        limit_scale,
-        move |button| limit_scale.set_sensitive(button.is_active())
+    let card = fang_card(12);
+
+    // Heading row: green heading on the left, toggle switch on the right.
+    let switch = gtk::Switch::builder()
+        .active(enabled)
+        .valign(gtk::Align::Center)
+        .halign(gtk::Align::End)
+        .hexpand(true)
+        .build();
+    let heading_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    heading_row.append(&card_heading("BATTERY HEALTH OPTIMIZER"));
+    heading_row.append(&switch);
+    card.append(&heading_row);
+
+    card.append(&note_label(
+        "Battery will stop charging when it reaches the limit, to protect \
+         long-term battery health.",
     ));
-    apply.connect_clicked(clone!(
+
+    // Percent readout in the same style as the brightness cards.
+    let percent_label = gtk::Label::builder()
+        .label(format!("{limit:.0}"))
+        .css_classes(["dash-value-medium"])
+        .build();
+    let unit = gtk::Label::builder()
+        .label("% LIMIT")
+        .css_classes(["dash-label"])
+        .valign(gtk::Align::End)
+        .margin_bottom(3)
+        .build();
+    let readout = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    readout.append(&percent_label);
+    readout.append(&unit);
+    card.append(&readout);
+
+    let scale = value_scale(BHO_MIN_PERCENT, BHO_MAX_PERCENT, 5.0, limit);
+    scale.set_draw_value(false);
+    scale.add_mark(BHO_MIN_PERCENT, gtk::PositionType::Bottom, Some("50"));
+    scale.add_mark(BHO_MAX_PERCENT, gtk::PositionType::Bottom, Some("80"));
+    scale.set_sensitive(enabled);
+    card.append(&scale);
+
+    // The widgets' initial state is set above, before these handlers are
+    // connected, so startup sends nothing.  The slider is debounced so a
+    // drag is one request, not one per tick.
+    let pending = Rc::new(RefCell::new(None::<glib::SourceId>));
+
+    switch.connect_active_notify(clone!(
         #[weak]
-        on_button,
-        #[weak]
-        limit_scale,
+        scale,
         #[weak]
         overlay,
-        move |_| {
-            let line = if on_button.is_active() {
-                format!("bho {}", limit_scale.value().round() as u8)
+        move |switch| {
+            let on = switch.is_active();
+            scale.set_sensitive(on);
+            let line = if on {
+                format!("bho {}", scale.value().round() as u8)
             } else {
                 "bho off".to_owned()
             };
@@ -767,7 +806,29 @@ fn battery_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
         }
     ));
 
-    fang_page(&[section_label("BATTERY HEALTH OPTIMIZER"), card.upcast()])
+    scale.connect_value_changed(clone!(
+        #[weak]
+        switch,
+        #[weak]
+        percent_label,
+        #[weak]
+        overlay,
+        #[strong]
+        pending,
+        move |scale| {
+            let value = scale.value().round() as u8;
+            percent_label.set_text(&value.to_string());
+            if !switch.is_active() {
+                return;
+            }
+            let overlay = overlay.clone();
+            debounce(&pending, 250, move || {
+                feedback(&overlay, transport::request(&format!("bho {value}")));
+            });
+        }
+    ));
+
+    fang_page(&[card.upcast()])
 }
 
 /// Key/value rows for daemon, power source, and transport, with a quiet
