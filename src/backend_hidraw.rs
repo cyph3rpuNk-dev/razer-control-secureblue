@@ -6,11 +6,12 @@
 //! delay, single retry on BUSY) follows razer-control-revived and
 //! fang-razer-linux (both GPL-2.0), which run this exchange on real Blades.
 
+use std::cell::Cell;
 use std::thread;
 use std::time::Duration;
 
 use crate::backend::{Backend, HidCandidate, select_hid_candidate};
-use crate::protocol::{self, Packet, REPORT_LEN, ResponseStatus};
+use crate::protocol::{self, CrcWindow, Packet, REPORT_LEN, ValidResponse};
 use crate::{DeviceId, EcContext, RequestedOperation, find_device};
 
 /// EC settle time between writing a command and reading its response.
@@ -21,6 +22,10 @@ const BUSY_RETRY_DELAY: Duration = Duration::from_millis(20);
 pub struct HidrawBackend {
     device: hidapi::HidDevice,
     id: DeviceId,
+    /// Set once the first successful exchange has logged which CRC window
+    /// the EC's responses satisfy, so Phase 3 journals record the evidence
+    /// without per-packet noise.
+    crc_window_logged: Cell<bool>,
 }
 
 impl HidrawBackend {
@@ -58,6 +63,7 @@ impl HidrawBackend {
         Ok(Self {
             device,
             id: expected,
+            crc_window_logged: Cell::new(false),
         })
     }
 
@@ -65,17 +71,24 @@ impl HidrawBackend {
         self.exchange(packet).map(|_| ())
     }
 
-    /// Sends a query packet and returns the full successful response report;
-    /// callers decode args via [`protocol::RESPONSE_ARGS_OFFSET`].  Phase 3
-    /// verification uses this for the read-only 0x8x commands before any
-    /// write is attempted.
-    pub fn query(&self, packet: &Packet) -> Result<[u8; REPORT_LEN], String> {
+    /// Sends a query packet and returns the full validated response report
+    /// and the CRC window it satisfied; callers decode args via
+    /// [`protocol::RESPONSE_ARGS_OFFSET`].  Phase 3 verification uses this
+    /// for the read-only 0x8x commands before any write is attempted.
+    pub fn query(&self, packet: &Packet) -> Result<([u8; REPORT_LEN], CrcWindow), String> {
         self.exchange(packet)
     }
 
-    fn exchange(&self, packet: &Packet) -> Result<[u8; REPORT_LEN], String> {
+    /// One send/validate round trip.  Two independent single retries: one
+    /// for a BUSY verdict (after a back-off) and one for a malformed or
+    /// stale frame (immediate re-send), so a transient BUSY followed by one
+    /// stale read still succeeds.  Only a fully validated SUCCESSFUL frame
+    /// ever returns `Ok`.
+    fn exchange(&self, packet: &Packet) -> Result<([u8; REPORT_LEN], CrcWindow), String> {
         let report = packet.to_feature_report();
-        for attempt in 0..2 {
+        let mut busy_retried = false;
+        let mut malformed_retried = false;
+        loop {
             self.device
                 .send_feature_report(&report)
                 .map_err(|error| format!("feature-report write failed: {error}"))?;
@@ -86,31 +99,32 @@ impl HidrawBackend {
                 .device
                 .get_feature_report(&mut response)
                 .map_err(|error| format!("feature-report read failed: {error}"))?;
-            if read != REPORT_LEN {
-                return Err(format!("short EC response: {read} of {REPORT_LEN} bytes"));
-            }
 
-            match protocol::response_status(&response) {
-                Some(ResponseStatus::Busy) if attempt == 0 => {
-                    thread::sleep(BUSY_RETRY_DELAY);
-                    continue;
-                }
-                Some(ResponseStatus::Success) => {
-                    // Only a successful response is required to echo the
-                    // command; a BUSY reply may not carry it.
-                    if !packet.matches_response(&response) {
-                        return Err("EC answered a different command".to_owned());
+            match protocol::validate_response(packet, &response[..read]) {
+                Ok(ValidResponse::Success { crc_window }) => {
+                    if !self.crc_window_logged.replace(true) {
+                        eprintln!(
+                            "EC responses match the {} CRC window",
+                            crc_window.as_str()
+                        );
                     }
-                    return Ok(response);
+                    return Ok((response, crc_window));
                 }
-                Some(ResponseStatus::NotSupported) => {
-                    return Err("EC reports this command as unsupported".to_owned());
+                Ok(ValidResponse::Busy) if !busy_retried => {
+                    busy_retried = true;
+                    thread::sleep(BUSY_RETRY_DELAY);
                 }
-                Some(other) => return Err(format!("EC returned {other:?}")),
-                None => return Err("EC returned an unknown status byte".to_owned()),
+                Ok(ValidResponse::Busy) => return Err("EC still busy after retry".to_owned()),
+                Err(error) if error.is_retryable() && !malformed_retried => {
+                    malformed_retried = true;
+                }
+                Err(error) if error.is_retryable() => {
+                    return Err(format!("invalid EC response: {error}"));
+                }
+                // The EC's own verdicts pass through unwrapped.
+                Err(error) => return Err(error.to_string()),
             }
         }
-        Err("EC still busy after retry".to_owned())
     }
 }
 

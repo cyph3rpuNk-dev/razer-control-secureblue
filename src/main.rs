@@ -57,19 +57,27 @@ fn parse_backend_flag(rest: &[String]) -> Result<BackendChoice, String> {
 
 /// Read-only EC state dump for Phase 3 verification: power mode, boost
 /// levels, fan setpoints, and BHO, via the 0x8x query commands.  Nothing
-/// here writes to the EC.
+/// here writes to the EC.  Every response is validated, and the closing
+/// `crc_window=` line records which checksum window the EC's replies
+/// satisfied — the Phase 3 Step 1a evidence for pinning the window.
 #[cfg(feature = "hidraw-backend")]
 fn run_probe() -> Result<String, String> {
     use razer_control_secureblue::backend_hidraw::HidrawBackend;
     use razer_control_secureblue::protocol::{self, RESPONSE_ARGS_OFFSET, Zone};
     let backend = HidrawBackend::open(current_supported_device())?;
+    let mut windows: Vec<protocol::CrcWindow> = Vec::new();
+    let mut query = |packet: &protocol::Packet| -> Result<[u8; protocol::REPORT_LEN], String> {
+        let (report, window) = backend.query(packet)?;
+        windows.push(window);
+        Ok(report)
+    };
     let arg =
         |report: &[u8; protocol::REPORT_LEN], index: usize| report[RESPONSE_ARGS_OFFSET + index];
     let mut out = String::new();
     for (name, zone) in [("cpu", Zone::Cpu), ("gpu", Zone::Gpu)] {
-        let mode = backend.query(&protocol::get_power_mode(zone))?;
-        let boost = backend.query(&protocol::get_boost(zone))?;
-        let setpoint = backend.query(&protocol::get_fan_setpoint(zone))?;
+        let mode = query(&protocol::get_power_mode(zone))?;
+        let boost = query(&protocol::get_boost(zone))?;
+        let setpoint = query(&protocol::get_fan_setpoint(zone))?;
         out.push_str(&format!(
             "{name}: mode={} manual_fan={} boost={} fan_setpoint_rpm={}\n",
             arg(&mode, 2),
@@ -78,9 +86,19 @@ fn run_probe() -> Result<String, String> {
             arg(&setpoint, 2) as u16 * 100,
         ));
     }
-    let bho = backend.query(&protocol::get_battery_health())?;
+    let bho = query(&protocol::get_battery_health())?;
     let (enabled, threshold) = protocol::decode_battery_health(arg(&bho, 0));
-    out.push_str(&format!("bho: enabled={enabled} threshold={threshold}%"));
+    out.push_str(&format!("bho: enabled={enabled} threshold={threshold}%\n"));
+    let mut distinct: Vec<&str> = Vec::new();
+    for window in &windows {
+        if !distinct.contains(&window.as_str()) {
+            distinct.push(window.as_str());
+        }
+    }
+    match distinct.as_slice() {
+        [single] => out.push_str(&format!("crc_window={single}")),
+        many => out.push_str(&format!("crc_window=mixed({})", many.join(","))),
+    }
     Ok(out)
 }
 
