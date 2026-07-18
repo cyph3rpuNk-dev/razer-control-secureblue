@@ -9,6 +9,7 @@ pub enum Request {
     Ping,
     Status,
     Telemetry,
+    SysInfo,
     /// Configure the fan choice applied when the power source changes;
     /// `None` clears the rule for that source.
     Automation {
@@ -30,6 +31,7 @@ pub fn parse_request(line: &str) -> Result<Request, String> {
         ["ping"] => Ok(Request::Ping),
         ["status"] => Ok(Request::Status),
         ["telemetry"] => Ok(Request::Telemetry),
+        ["sysinfo"] => Ok(Request::SysInfo),
         ["automation", source, rest @ ..] => {
             let on_ac = match *source {
                 "ac" => true,
@@ -364,6 +366,7 @@ mod tests {
         assert_eq!(parse_request("ping"), Ok(Request::Ping));
         assert_eq!(parse_request("status"), Ok(Request::Status));
         assert_eq!(parse_request("telemetry"), Ok(Request::Telemetry));
+        assert_eq!(parse_request("sysinfo"), Ok(Request::SysInfo));
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub struct Daemon<B: Backend> {
     fan_mode: FanMode,
     profile: Profile,
     simulate_telemetry: bool,
+    telemetry: crate::telemetry::TelemetryReader,
     state: PersistedState,
     dirty: bool,
 }
@@ -32,6 +33,7 @@ impl<B: Backend> Daemon<B> {
             fan_mode: FanMode::Auto,
             profile: Profile::Balanced,
             simulate_telemetry: false,
+            telemetry: crate::telemetry::TelemetryReader::default(),
             state: PersistedState::default(),
             dirty: false,
         }
@@ -95,8 +97,11 @@ impl<B: Backend> Daemon<B> {
             ),
             Request::Telemetry => format!(
                 "ok {}",
-                crate::telemetry::read(self.simulate_telemetry).to_line()
+                self.telemetry.read(self.simulate_telemetry).to_line()
             ),
+            Request::SysInfo => {
+                format!("ok {}", crate::telemetry::sysinfo(self.simulate_telemetry))
+            }
             Request::Automation { on_ac, fan } => {
                 if let Some(FanMode::Manual(rpm)) = fan
                     && let Err(error) = validate_operation(
@@ -421,6 +426,16 @@ mod tests {
                 .handle_line("telemetry")
                 .contains("simulated=true")
         );
+    }
+
+    #[test]
+    fn sysinfo_is_a_read_only_identity_request() {
+        let mut daemon =
+            Daemon::new(BLADE_14_2023, DryRunBackend::default(), false).with_simulated_telemetry();
+        let response = daemon.handle_line("sysinfo");
+        assert!(response.starts_with("ok cpu_model="));
+        assert!(response.contains("gpu_dgpu=NVIDIA"));
+        assert!(daemon.backend().applied.is_empty());
     }
 
     #[test]
