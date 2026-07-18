@@ -3,7 +3,7 @@
 # docs/INSTALL.md, Path C.  Tracked for the packaging milestone.
 
 Name:           razer-control-secureblue
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Safety-first Razer Blade control for Atomic Linux
 License:        GPL-2.0-only
@@ -76,6 +76,15 @@ install -Dm0644 systemd/razer-control.service %{buildroot}%{_userunitdir}/razer-
 %{_userunitdir}/razer-control.service
 
 %changelog
+* Sat Jul 18 2026 razer-control-secureblue maintainers <llmplayerx@gmail.com> - 0.2.0-1
+- Strict EC response validation: frame, status, transaction, command and
+  data-size checks with typed errors; malformed or stale replies are
+  retried once and never accepted as a successful write.
+- Identify and report the EC response CRC window (lineage vs OpenRazer)
+  ahead of the Phase 3 on-device determination.
+- Detect AC power from any online non-battery supply, fixing USB-C PD and
+  multi-adapter systems that previously read as on-battery.
+
 * Tue Jul 14 2026 razer-control-secureblue maintainers <llmplayerx@gmail.com> - 0.1.0-1
 - Initial package: policy layer, dry-run socket-activated user daemon,
   uaccess udev rule, systemd user units, KDE tray, and the native
