@@ -43,11 +43,15 @@ headerbar {
   color: #f0f3f0;
 }
 
-/* Uppercase mono page title in the content header ("DASHBOARD"). */
+/* Uppercase mono page title in the content header ("DASHBOARD").
+ * Left-inset by 24px to line up with the page content: fang_page insets
+ * its cards (and the Performance page's section labels) by the same 24px,
+ * and the header itself adds no start padding. */
 .page-title {
   font-family: monospace;
   font-size: 12px;
   letter-spacing: 4px;
+  margin-left: 24px;
   color: #8a938c;
 }
 
@@ -137,6 +141,13 @@ headerbar {
   font-size: 11px;
   letter-spacing: 2px;
   color: #6f7873;
+}
+
+/* Small live sub-readout under a gauge caption (util · clock, util · VRAM). */
+.dash-subvalue {
+  font-family: monospace;
+  font-size: 11px;
+  color: #8a938c;
 }
 .chart-value,
 .profile-value {

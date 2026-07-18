@@ -88,8 +88,8 @@ fn build_ui(app: &adw::Application) {
             "Performance",
             "power-profile-performance-symbolic",
         ),
-        ("battery", "Battery", "battery-good-symbolic"),
         ("display", "Display & GPU", "video-display-symbolic"),
+        ("battery", "Battery", "battery-good-symbolic"),
         ("lighting", "Lighting", "input-keyboard-symbolic"),
     ];
 
@@ -102,15 +102,20 @@ fn build_ui(app: &adw::Application) {
     }
     sidebar_list.select_row(sidebar_list.row_at_index(0).as_ref());
 
+    // The brand is the first item of the sidebar content (not an
+    // adw::HeaderBar title, which left-offsets it) so it centers over the
+    // full sidebar width.  Its ~46 px height matches the content header,
+    // so the nav list lines up with the content pane's cards.  The sidebar
+    // therefore has no ToolbarView top bar of its own.
+    let brand = brand_mark();
+    brand.set_halign(gtk::Align::Center);
+    brand.set_margin_top(13);
+    brand.set_margin_bottom(13);
+
     let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    sidebar_box.append(&brand);
     sidebar_box.append(&sidebar_list);
     sidebar_box.append(&sidebar_footer());
-
-    // Fang shows no titlebar text: the sidebar header carries the brand
-    // mark and the content header carries the uppercase page title.
-    let sidebar_header = adw::HeaderBar::new();
-    sidebar_header.set_show_title(false);
-    sidebar_header.pack_start(&brand_mark());
 
     let page_title = gtk::Label::builder()
         .label("DASHBOARD")
@@ -123,7 +128,6 @@ fn build_ui(app: &adw::Application) {
     let sidebar_toolbar = adw::ToolbarView::builder()
         .css_classes(["fang-sidebar"])
         .build();
-    sidebar_toolbar.add_top_bar(&sidebar_header);
     sidebar_toolbar.set_content(Some(&sidebar_box));
 
     let content_toolbar = adw::ToolbarView::builder()
@@ -176,8 +180,11 @@ fn build_ui(app: &adw::Application) {
         .application(app)
         .title("Razer Control")
         .icon_name("razer-control-desktop")
-        .default_width(1100)
-        .default_height(680)
+        // Sized to show the widest content — the dashboard's three top
+        // cards plus the hardware panel's full GPU names — without
+        // clipping; still freely resizable down to the collapse breakpoint.
+        .default_width(1280)
+        .default_height(800)
         .content(&split)
         .build();
 
@@ -195,15 +202,19 @@ fn build_ui(app: &adw::Application) {
 
     // WSLg's window manager ignores the initial-size request and maps every
     // window at 640x480, which lands under the breakpoint and shows only the
-    // collapsed sidebar.  Real desktops honor the request; under WSL maximize
-    // instead — and only after present(): maximizing the unmapped window
-    // makes WSLg's compositor kill the connection and the app exits with 1.
+    // collapsed sidebar.  Re-assert the size after present() (before that,
+    // the surface is unmapped and WSLg drops the request).  Maximizing
+    // instead would size the window to WSLg's oversized virtual display,
+    // running its right edge off a normal laptop screen; an explicit size
+    // clears the breakpoint and stays fully visible.  Real desktops never
+    // take this branch — they honor default_width/height directly.
     if std::env::var_os("WSL_DISTRO_NAME").is_some() {
-        window.maximize();
+        window.set_default_size(1280, 800);
     }
 }
 
-/// App icon plus wide-tracked wordmark, top-left like Fang's "V FANG".
+/// App icon plus wide-tracked wordmark.  Placed as the center widget of
+/// the sidebar's CenterBox top bar, which centers it over the sidebar.
 fn brand_mark() -> gtk::Box {
     let brand = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = gtk::Image::from_icon_name("razer-control-desktop");
@@ -227,9 +238,10 @@ fn sidebar_row(title: &str, icon: &str) -> gtk::ListBoxRow {
     gtk::ListBoxRow::builder().child(&row_box).build()
 }
 
-/// Device and daemon identity, pinned to the sidebar's bottom like Fang's
-/// status footer.  The subtitle names the transport so a mock session can
-/// never be mistaken for the real daemon.
+/// App identity, pinned to the sidebar's bottom like Fang's status
+/// footer.  The transport (mock vs. real daemon) is surfaced on the
+/// dashboard's SYSTEM STATUS card, so the footer names the app and its
+/// version instead.
 fn sidebar_footer() -> gtk::Box {
     let footer = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -242,18 +254,18 @@ fn sidebar_footer() -> gtk::Box {
         .valign(gtk::Align::Start)
         .build();
     let name = gtk::Label::builder()
-        .label(razer_control_secureblue::BLADE_14_2023.name)
+        .label("Razer Control")
         .halign(gtk::Align::Start)
         .css_classes(["footer-title"])
         .build();
-    let transport_label = gtk::Label::builder()
-        .label(transport::label())
+    let version = gtk::Label::builder()
+        .label(format!("v{}", env!("CARGO_PKG_VERSION")))
         .halign(gtk::Align::Start)
         .css_classes(["footer-subtitle"])
         .build();
     let text = gtk::Box::new(gtk::Orientation::Vertical, 2);
     text.append(&name);
-    text.append(&transport_label);
+    text.append(&version);
     footer.append(&dot);
     footer.append(&text);
     footer
@@ -382,9 +394,6 @@ fn performance_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
 
     let automation_card = build_automation_card(overlay);
 
-    let (status_card, daemon_value, power_value, transport_value) = build_status_card();
-    refresh(&daemon_value, &power_value, &transport_value);
-
     let mut children: Vec<gtk::Widget> = vec![section_label("PROFILE"), profile_row.upcast()];
     if !experimental {
         children.push(
@@ -401,8 +410,6 @@ fn performance_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
         fan_card.upcast(),
         section_label("POWER AUTOMATION"),
         automation_card.upcast(),
-        section_label("SYSTEM STATUS"),
-        status_card.upcast(),
     ]);
     fang_page(&children)
 }
@@ -831,12 +838,32 @@ fn battery_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
     fang_page(&[card.upcast()])
 }
 
-/// Key/value rows for daemon, power source, and transport, with a quiet
-/// REFRESH button — the one card that polls nothing on its own.
-fn build_status_card() -> (gtk::Box, gtk::Label, gtk::Label, gtk::Label) {
-    let card = fang_card(0);
+/// The value labels of the system-status card, updated live from the
+/// dashboard's poll.
+struct StatusLabels {
+    device: gtk::Label,
+    connection: gtk::Label,
+    backend: gtk::Label,
+    experimental: gtk::Label,
+    power: gtk::Label,
+    profile: gtk::Label,
+    fan: gtk::Label,
+}
 
-    let row = |caption: &str| -> (gtk::Box, gtk::Label) {
+/// A human-readable system-status panel for the dashboard: what the
+/// daemon is, how the GUI reached it, whether experimental control is
+/// on, and the power source.  Pure display, updated from the 1 Hz poll —
+/// no manual refresh, no raw wire strings.
+fn build_status_card() -> (gtk::Box, StatusLabels) {
+    let card = fang_card(0);
+    // The card packs its rows with no inter-child spacing, so the heading
+    // needs its own gap to sit apart from the first row.
+    let heading = card_heading("SYSTEM STATUS");
+    heading.set_margin_bottom(10);
+    card.append(&heading);
+
+    let rows = card.clone();
+    let row = move |caption: &str| -> gtk::Label {
         let container = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .spacing(12)
@@ -857,36 +884,74 @@ fn build_status_card() -> (gtk::Box, gtk::Label, gtk::Label, gtk::Label) {
             .build();
         container.append(&caption);
         container.append(&value);
-        (container, value)
+        rows.append(&container);
+        value
     };
 
-    let (daemon_row, daemon_value) = row("DAEMON");
-    let (power_row, power_value) = row("POWER SOURCE");
-    let (transport_row, transport_value) = row("TRANSPORT");
+    // Identity/config rows first, then the live-state rows.
+    let labels = StatusLabels {
+        device: row("DEVICE"),
+        connection: row("CONNECTION"),
+        backend: row("BACKEND"),
+        experimental: row("EXPERIMENTAL"),
+        power: row("POWER SOURCE"),
+        profile: row("PROFILE"),
+        fan: row("FAN"),
+    };
+    (card, labels)
+}
 
-    let refresh_button = gtk::Button::builder()
-        .label("REFRESH")
-        .halign(gtk::Align::End)
-        .margin_top(8)
-        .css_classes(["fang-ghost"])
-        .build();
-
-    card.append(&daemon_row);
-    card.append(&power_row);
-    card.append(&transport_row);
-    card.append(&refresh_button);
-
-    refresh_button.connect_clicked(clone!(
-        #[weak]
-        daemon_value,
-        #[weak]
-        power_value,
-        #[weak]
-        transport_value,
-        move |_| refresh(&daemon_value, &power_value, &transport_value)
+/// Fill the status rows from a parsed `status` response, turning the
+/// daemon's wire fields into friendly text.
+fn update_status_labels(labels: &StatusLabels, status: &HashMap<String, String>) {
+    labels
+        .device
+        .set_text(match status.get("device").map(String::as_str) {
+            Some("1532:029d") => razer_control_secureblue::BLADE_14_2023.name,
+            Some(other) => other,
+            None => "—",
+        });
+    labels
+        .backend
+        .set_text(match status.get("backend").map(String::as_str) {
+            Some("dry-run") => "Dry run — no hardware writes",
+            Some("hidraw") => "Hardware (hidraw)",
+            Some(other) => other,
+            None => "—",
+        });
+    labels
+        .connection
+        .set_text(if transport::label() == "daemon socket" {
+            "Daemon socket"
+        } else {
+            "In-process dry run"
+        });
+    labels
+        .experimental
+        .set_text(match status.get("experimental").map(String::as_str) {
+            Some("true") => "On",
+            Some("false") => "Off",
+            _ => "—",
+        });
+    labels.power.set_text(power_source());
+    labels.profile.set_text(&status.get("profile").map_or_else(
+        || "—".to_owned(),
+        |name| {
+            let mut chars = name.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first.to_uppercase().collect::<String>() + chars.as_str()
+            })
+        },
     ));
-
-    (card, daemon_value, power_value, transport_value)
+    labels
+        .fan
+        .set_text(&match status.get("fan").map(String::as_str) {
+            Some("auto") => "Automatic".to_owned(),
+            Some(manual) if manual.starts_with("manual:") => {
+                format!("Manual {} RPM", manual.trim_start_matches("manual:"))
+            }
+            _ => "—".to_owned(),
+        });
 }
 
 /// GPU-mode switching, in Fang's manner: delegate to whichever supported
@@ -2250,9 +2315,10 @@ fn dashboard_page() -> gtk::Widget {
     )));
 
     // Fang's top row: CPU PACKAGE and GPU CORE gauges, then the fan card.
-    let (cpu_card, cpu_area, cpu_value_label) =
+    let (cpu_card, cpu_area, cpu_value_label, cpu_sub) =
         build_gauge_card("CPU PACKAGE", Rc::clone(&cpu_value));
-    let (gpu_card, gpu_area, gpu_value_label) = build_gauge_card("GPU CORE", Rc::clone(&gpu_value));
+    let (gpu_card, gpu_area, gpu_value_label, gpu_sub) =
+        build_gauge_card("GPU CORE", Rc::clone(&gpu_value));
     let (fan_card, fan_value_label) = build_fan_card(Rc::clone(&fan_value));
 
     let cards = gtk::Box::builder()
@@ -2280,7 +2346,13 @@ fn dashboard_page() -> gtk::Widget {
     charts.append(&cpu_chart_card);
     charts.append(&fan_chart_card);
 
-    let (profile_bar, profile_value_label, profile_detail_label) = build_profile_bar();
+    // Static machine identity, read once (does not change while running).
+    let sysinfo = request_sysinfo();
+    let has_dgpu = sysinfo.get("gpu_dgpu").is_some_and(|value| value != "none");
+    let (hardware_card, mem_label) = build_hardware_card(&sysinfo);
+    let (status_card, status_labels) = build_status_card();
+    // Fill the status rows once so they are not "—" before the first tick.
+    update_status_labels(&status_labels, &request_fields("status"));
 
     let page = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -2292,31 +2364,55 @@ fn dashboard_page() -> gtk::Widget {
         .build();
     page.append(&cards);
     page.append(&charts);
-    page.append(&profile_bar);
+    page.append(&hardware_card);
+    page.append(&status_card);
 
     glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
         let telemetry = request_fields("telemetry");
         let status = request_fields("status");
 
-        let cpu = telemetry
-            .get("cpu_temp")
-            .and_then(|value| value.parse::<f64>().ok());
+        let field = |key: &str| {
+            telemetry
+                .get(key)
+                .and_then(|value| value.parse::<f64>().ok())
+        };
+
+        let cpu = field("cpu_temp");
         cpu_value.set(cpu);
         cpu_value_label.set_text(&cpu.map_or("—".to_owned(), |t| format!("{t:.0}")));
         if let Some(temperature) = cpu {
             push_sample(&cpu_history, temperature);
             cpu_chart_value.set_text(&format!("{temperature:.0} °C"));
         }
+        // CPU sub-readout: utilisation · clock.
+        let mut cpu_parts = Vec::new();
+        if let Some(util) = field("cpu_util") {
+            cpu_parts.push(format!("{util:.0}%"));
+        }
+        if let Some(mhz) = field("cpu_freq") {
+            cpu_parts.push(format!("{:.2} GHz", mhz / 1000.0));
+        }
+        cpu_sub.set_text(&join_or_dash(&cpu_parts));
 
-        let gpu = telemetry
-            .get("gpu_temp")
-            .and_then(|value| value.parse::<f64>().ok());
+        let gpu = field("gpu_temp");
         gpu_value.set(gpu);
         gpu_value_label.set_text(&gpu.map_or("—".to_owned(), |t| format!("{t:.0}")));
+        // GPU sub-readout: utilisation · VRAM, plus a dGPU-asleep note when
+        // we have fallen back to the integrated GPU.
+        let mut gpu_parts = Vec::new();
+        if let Some(util) = field("gpu_util") {
+            gpu_parts.push(format!("{util:.0}%"));
+        }
+        if let (Some(used), Some(total)) = (field("gpu_mem_used"), field("gpu_mem_total")) {
+            gpu_parts.push(format!("{:.1}/{:.1} GB", used / 1024.0, total / 1024.0));
+        }
+        let mut gpu_text = join_or_dash(&gpu_parts);
+        if telemetry.get("gpu_source").map(String::as_str) == Some("igpu") && has_dgpu {
+            gpu_text.push_str(" · dGPU asleep");
+        }
+        gpu_sub.set_text(&gpu_text);
 
-        let fan = telemetry
-            .get("fan_rpm")
-            .and_then(|value| value.parse::<f64>().ok());
+        let fan = field("fan_rpm");
         fan_value.set(fan);
         fan_value_label.set_text(&fan.map_or("—".to_owned(), |rpm| format!("{rpm:.0}")));
         if let Some(rpm) = fan {
@@ -2324,23 +2420,21 @@ fn dashboard_page() -> gtk::Widget {
             fan_chart_value.set_text(&format!("{rpm:.0} rpm"));
         }
 
-        // Power source moved off the card row (Fang has no power card
-        // there); it lives in the profile bar's detail text instead.
-        let power = match telemetry.get("power").map(String::as_str) {
-            Some("ac") => "plugged in",
-            Some("battery") => "on battery",
-            _ => "power unknown",
-        };
-        profile_value_label.set_text(&describe_status_fan(status.get("fan")));
-        profile_detail_label.set_text(&format!(
-            "{power} · backend: {}{}",
-            status.get("backend").map_or("—", String::as_str),
-            if telemetry.get("simulated").map(String::as_str) == Some("true") {
-                " · simulated"
-            } else {
-                ""
-            }
-        ));
+        // Live memory row on the hardware card.
+        if let (Some(used), Some(total)) = (field("mem_used"), field("mem_total"))
+            && total > 0.0
+        {
+            mem_label.set_text(&format!(
+                "{:.1} / {:.1} GB ({:.0}%)",
+                used / 1_048_576.0,
+                total / 1_048_576.0,
+                used / total * 100.0
+            ));
+        }
+
+        // The active profile and fan mode are rows in the SYSTEM STATUS
+        // card now, alongside device/backend/power/connection.
+        update_status_labels(&status_labels, &status);
         cpu_area.queue_draw();
         gpu_area.queue_draw();
         cpu_chart_area.queue_draw();
@@ -2379,14 +2473,89 @@ fn request_fields(request: &str) -> HashMap<String, String> {
         .collect()
 }
 
-fn describe_status_fan(fan: Option<&String>) -> String {
-    match fan.map(String::as_str) {
-        Some("auto") => "Fan: automatic".to_owned(),
-        Some(manual) if manual.starts_with("manual:") => {
-            format!("Fan: manual {} RPM", manual.trim_start_matches("manual:"))
-        }
-        _ => "Fan: —".to_owned(),
+/// The `sysinfo` reply, whose values (model names) contain spaces and so
+/// are tab-separated rather than space-separated.
+fn request_sysinfo() -> HashMap<String, String> {
+    let Ok(line) = transport::request("sysinfo") else {
+        return HashMap::new();
+    };
+    line.trim_start_matches("ok ")
+        .split('\t')
+        .filter_map(|field| {
+            field
+                .split_once('=')
+                .map(|(key, value)| (key.to_owned(), value.trim().to_owned()))
+        })
+        .collect()
+}
+
+/// Join non-empty parts with " · ", or "—" when there is nothing to show.
+fn join_or_dash(parts: &[String]) -> String {
+    if parts.is_empty() {
+        "—".to_owned()
+    } else {
+        parts.join(" · ")
     }
+}
+
+/// Task-Manager-style hardware identity, filled once from `sysinfo`.
+/// Returns the card and the MEMORY value label, which the dashboard
+/// updates live each tick.
+fn build_hardware_card(sysinfo: &HashMap<String, String>) -> (gtk::Box, gtk::Label) {
+    let card = fang_card(0);
+    let heading = card_heading("HARDWARE");
+    heading.set_margin_bottom(10);
+    card.append(&heading);
+
+    let rows = card.clone();
+    let row = move |caption: &str, value: &str| -> gtk::Label {
+        let container = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(12)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+        let cap = gtk::Label::builder()
+            .label(caption)
+            .halign(gtk::Align::Start)
+            .css_classes(["dash-label"])
+            .build();
+        let val = gtk::Label::builder()
+            .label(value)
+            .halign(gtk::Align::End)
+            .hexpand(true)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .css_classes(["status-value"])
+            .build();
+        container.append(&cap);
+        container.append(&val);
+        rows.append(&container);
+        val
+    };
+
+    let get = |key: &str| {
+        sysinfo
+            .get(key)
+            .map(String::as_str)
+            .filter(|v| *v != "none")
+    };
+
+    let cores_threads = match (get("cpu_cores"), get("cpu_threads")) {
+        (Some(cores), Some(threads)) => format!("  ·  {cores}C / {threads}T"),
+        _ => String::new(),
+    };
+    row(
+        "PROCESSOR",
+        &format!("{}{cores_threads}", get("cpu_model").unwrap_or("—")),
+    );
+    if let Some(dgpu) = get("gpu_dgpu") {
+        row("DEDICATED GPU", dgpu);
+    }
+    if let Some(igpu) = get("gpu_igpu") {
+        row("INTEGRATED GPU", igpu);
+    }
+    let mem_label = row("MEMORY", "—");
+    (card, mem_label)
 }
 
 fn dash_label(text: &str) -> gtk::Label {
@@ -2398,11 +2567,13 @@ fn dash_label(text: &str) -> gtk::Label {
 }
 
 /// Segmented arc gauge in the Fang style: 28 ticks over 270 degrees, lit
-/// green up to the current fraction of the 30–100 °C span.
+/// green up to the current fraction of the 30–100 °C span.  Returns the
+/// big temperature label and a small sub-readout label the dashboard
+/// fills with live utilisation/clock/VRAM.
 fn build_gauge_card(
     caption: &str,
     value: Rc<Cell<Option<f64>>>,
-) -> (gtk::Box, gtk::DrawingArea, gtk::Label) {
+) -> (gtk::Box, gtk::DrawingArea, gtk::Label, gtk::Label) {
     let area = gtk::DrawingArea::builder()
         .content_width(150)
         .content_height(150)
@@ -2461,10 +2632,16 @@ fn build_gauge_card(
     let overlay = gtk::Overlay::builder().child(&area).build();
     overlay.add_overlay(&center);
 
+    let sub_label = gtk::Label::builder()
+        .label("")
+        .css_classes(["dash-subvalue"])
+        .build();
+
     let card = fang_card(6);
     card.append(&overlay);
     card.append(&dash_label(caption));
-    (card, area, value_label)
+    card.append(&sub_label);
+    (card, area, value_label, sub_label)
 }
 
 /// Fang's fan card: a nine-petal rosette with a green hub over the RPM
@@ -2655,30 +2832,6 @@ fn build_sparkline_card(
     (card, area, value_label)
 }
 
-fn build_profile_bar() -> (gtk::Box, gtk::Label, gtk::Label) {
-    let caption = dash_label("ACTIVE PROFILE");
-    caption.set_halign(gtk::Align::Start);
-    let value_label = gtk::Label::builder()
-        .label("—")
-        .css_classes(["profile-value"])
-        .build();
-    let detail_label = gtk::Label::builder()
-        .label("")
-        .halign(gtk::Align::End)
-        .hexpand(true)
-        .css_classes(["footer-subtitle"])
-        .build();
-    let bar = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(16)
-        .css_classes(["fang-card"])
-        .build();
-    bar.append(&caption);
-    bar.append(&value_label);
-    bar.append(&detail_label);
-    (bar, value_label, detail_label)
-}
-
 fn value_scale(min: f64, max: f64, step: f64, initial: f64) -> gtk::Scale {
     let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, min, max, step);
     scale.set_value(initial);
@@ -2705,16 +2858,6 @@ fn accent_button(label: &str) -> gtk::Button {
     button.add_css_class("suggested-action");
     button.set_valign(gtk::Align::Center);
     button
-}
-
-fn refresh(daemon_value: &gtk::Label, power_value: &gtk::Label, transport_value: &gtk::Label) {
-    let status = match transport::request("status") {
-        Ok(response) => response,
-        Err(error) => format!("err {error}"),
-    };
-    daemon_value.set_text(&status);
-    power_value.set_text(power_source());
-    transport_value.set_text(transport::label());
 }
 
 fn feedback(overlay: &adw::ToastOverlay, result: Result<String, String>) {
