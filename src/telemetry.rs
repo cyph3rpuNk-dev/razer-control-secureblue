@@ -428,20 +428,49 @@ fn amdgpu_drm() -> (Option<f64>, Option<u64>, Option<u64>) {
     (None, None, None)
 }
 
-/// AC adapter state from /sys/class/power_supply (type == "Mains").
-/// Public: the daemon transport polls this for AC/battery automation.
+/// AC adapter state from /sys/class/power_supply, considering every
+/// non-battery supply.  Public: the daemon transport polls this for
+/// AC/battery automation.
 #[cfg(target_os = "linux")]
 pub fn on_ac() -> Option<bool> {
     let supplies = std::fs::read_dir("/sys/class/power_supply").ok()?;
-    for entry in supplies.flatten() {
-        let path = entry.path();
-        let kind = std::fs::read_to_string(path.join("type")).unwrap_or_default();
-        if kind.trim() == "Mains" {
-            let online = std::fs::read_to_string(path.join("online")).ok()?;
-            return Some(online.trim() == "1");
+    let entries: Vec<(String, Option<String>)> = supplies
+        .flatten()
+        .map(|entry| {
+            let path = entry.path();
+            (
+                std::fs::read_to_string(path.join("type")).unwrap_or_default(),
+                std::fs::read_to_string(path.join("online")).ok(),
+            )
+        })
+        .collect();
+    ac_from_supplies(&entries)
+}
+
+/// Classifies power-supply entries: each element is one supply's `type`
+/// file contents and its `online` file contents when readable.
+///
+/// Any online non-battery supply means AC — the Blade 14 (2023) charges
+/// via both the barrel adapter (type "Mains") and USB-C PD (type "USB"),
+/// so stopping at the first Mains entry would both let an offline adapter
+/// mask an online one and read PD charging as on-battery (the bug class
+/// fang-razer-linux 0.9.1 fixed).  At least one readable adapter, none
+/// online, means battery; no readable adapter at all means unknown.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn ac_from_supplies(entries: &[(String, Option<String>)]) -> Option<bool> {
+    let mut saw_readable_adapter = false;
+    for (kind, online) in entries {
+        if kind.trim() == "Battery" {
+            continue;
+        }
+        if let Some(online) = online {
+            saw_readable_adapter = true;
+            if online.trim() == "1" {
+                return Some(true);
+            }
         }
     }
-    None
+    saw_readable_adapter.then_some(false)
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -644,5 +673,56 @@ mod tests {
         assert!(line.contains("cpu_model=AMD Ryzen 9 7940HS"));
         assert!(line.contains("gpu_dgpu=NVIDIA GeForce RTX 4060 Laptop GPU"));
         assert!(line.contains("simulated=true"));
+    }
+
+    fn supplies(entries: &[(&str, Option<&str>)]) -> Vec<(String, Option<String>)> {
+        entries
+            .iter()
+            .map(|(kind, online)| (kind.to_string(), online.map(str::to_string)))
+            .collect()
+    }
+
+    #[test]
+    fn a_later_online_adapter_is_seen_past_an_offline_mains() {
+        // The old first-Mains-wins logic read this as on-battery.
+        let entries = supplies(&[
+            ("Battery", None),
+            ("Mains", Some("0")),
+            ("USB", Some("1")),
+        ]);
+        assert_eq!(ac_from_supplies(&entries), Some(true));
+    }
+
+    #[test]
+    fn usb_pd_charging_counts_as_ac() {
+        // USB-C PD supplies report type "USB", not "Mains".
+        let entries = supplies(&[("Battery", None), ("USB", Some("1"))]);
+        assert_eq!(ac_from_supplies(&entries), Some(true));
+        let wireless = supplies(&[("Wireless", Some("1"))]);
+        assert_eq!(ac_from_supplies(&wireless), Some(true));
+    }
+
+    #[test]
+    fn all_adapters_offline_means_battery() {
+        let entries = supplies(&[
+            ("Battery", None),
+            ("Mains", Some("0")),
+            ("USB", Some("0")),
+        ]);
+        assert_eq!(ac_from_supplies(&entries), Some(false));
+    }
+
+    #[test]
+    fn no_readable_adapter_means_unknown() {
+        assert_eq!(ac_from_supplies(&supplies(&[("Battery", None)])), None);
+        assert_eq!(ac_from_supplies(&supplies(&[])), None);
+        // An adapter whose online file cannot be read proves nothing.
+        assert_eq!(ac_from_supplies(&supplies(&[("Mains", None)])), None);
+    }
+
+    #[test]
+    fn sysfs_trailing_newlines_are_trimmed() {
+        let entries = supplies(&[("Battery\n", None), ("Mains\n", Some("1\n"))]);
+        assert_eq!(ac_from_supplies(&entries), Some(true));
     }
 }
