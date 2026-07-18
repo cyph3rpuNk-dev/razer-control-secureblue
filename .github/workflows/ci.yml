@@ -34,10 +34,11 @@ jobs:
       - name: Build source tarball
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VERSION="$(rpmspec -q --qf '%{version}\n' packaging/razer-control-secureblue.spec | head -1)"
           mkdir -p ~/rpmbuild/SOURCES
           git archive --format=tar.gz \
-            --prefix=razer-control-secureblue-0.1.0/ \
-            -o ~/rpmbuild/SOURCES/razer-control-secureblue-0.1.0.tar.gz HEAD
+            --prefix="razer-control-secureblue-${VERSION}/" \
+            -o ~/rpmbuild/SOURCES/razer-control-secureblue-"${VERSION}".tar.gz HEAD
       - name: Build RPM
         run: rpmbuild -ba packaging/razer-control-secureblue.spec
       - name: Install RPM and verify the Atomic-relevant layout

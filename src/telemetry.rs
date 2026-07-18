@@ -685,11 +685,7 @@ mod tests {
     #[test]
     fn a_later_online_adapter_is_seen_past_an_offline_mains() {
         // The old first-Mains-wins logic read this as on-battery.
-        let entries = supplies(&[
-            ("Battery", None),
-            ("Mains", Some("0")),
-            ("USB", Some("1")),
-        ]);
+        let entries = supplies(&[("Battery", None), ("Mains", Some("0")), ("USB", Some("1"))]);
         assert_eq!(ac_from_supplies(&entries), Some(true));
     }
 
@@ -704,11 +700,7 @@ mod tests {
 
     #[test]
     fn all_adapters_offline_means_battery() {
-        let entries = supplies(&[
-            ("Battery", None),
-            ("Mains", Some("0")),
-            ("USB", Some("0")),
-        ]);
+        let entries = supplies(&[("Battery", None), ("Mains", Some("0")), ("USB", Some("0"))]);
         assert_eq!(ac_from_supplies(&entries), Some(false));
     }
 

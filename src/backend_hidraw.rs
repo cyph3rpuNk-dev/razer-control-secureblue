@@ -103,10 +103,7 @@ impl HidrawBackend {
             match protocol::validate_response(packet, &response[..read]) {
                 Ok(ValidResponse::Success { crc_window }) => {
                     if !self.crc_window_logged.replace(true) {
-                        eprintln!(
-                            "EC responses match the {} CRC window",
-                            crc_window.as_str()
-                        );
+                        eprintln!("EC responses match the {} CRC window", crc_window.as_str());
                     }
                     return Ok((response, crc_window));
                 }
