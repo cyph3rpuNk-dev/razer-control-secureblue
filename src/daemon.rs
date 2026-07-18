@@ -468,6 +468,28 @@ mod tests {
     }
 
     #[test]
+    fn factory_defaults_dim_the_keyboard_to_twenty_percent_on_unplug() {
+        use crate::config::PersistedState;
+        // Experimental so the keyboard write reaches the backend; the
+        // factory defaults are 40% on AC (current) and 20% on battery.
+        let mut daemon = daemon(true);
+        daemon.load_state(PersistedState::factory());
+        let action = daemon.on_power_change(false).unwrap();
+        assert!(action.contains("battery"));
+        assert_eq!(
+            daemon.backend().applied.last(),
+            Some(&RequestedOperation::KeyboardBrightness(20))
+        );
+        // Plugging back in restores the 40% AC brightness.
+        let action = daemon.on_power_change(true).unwrap();
+        assert!(action.contains("ac"));
+        assert_eq!(
+            daemon.backend().applied.last(),
+            Some(&RequestedOperation::KeyboardBrightness(40))
+        );
+    }
+
+    #[test]
     fn automation_rules_are_validated_and_persisted() {
         let mut daemon = daemon(false);
         assert!(

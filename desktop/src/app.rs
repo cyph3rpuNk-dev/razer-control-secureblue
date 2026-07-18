@@ -2895,6 +2895,7 @@ fn power_source() -> &'static str {
 mod transport {
     use razer_control_secureblue::BLADE_14_2023;
     use razer_control_secureblue::backend::DryRunBackend;
+    use razer_control_secureblue::config::PersistedState;
     use razer_control_secureblue::daemon::Daemon;
     use std::sync::{Mutex, OnceLock};
 
@@ -2918,11 +2919,14 @@ mod transport {
         let daemon = MOCK.get_or_init(|| {
             // Experimental is on in the mock: the backend is a dry run, so
             // the profile UI can be exercised with zero hardware risk.  The
-            // real daemon still defaults to locked.
-            Mutex::new(
-                Daemon::new(BLADE_14_2023, DryRunBackend::default(), true)
-                    .with_simulated_telemetry(),
-            )
+            // real daemon still defaults to locked.  Load the shipped
+            // factory defaults so the UI shows the same out-of-box state a
+            // fresh install would (BHO on, fan automation on, keyboard
+            // 40%/20%).
+            let mut daemon = Daemon::new(BLADE_14_2023, DryRunBackend::default(), true)
+                .with_simulated_telemetry();
+            daemon.load_state(PersistedState::factory());
+            Mutex::new(daemon)
         });
         Ok(daemon
             .lock()

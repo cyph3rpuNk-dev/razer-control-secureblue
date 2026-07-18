@@ -49,12 +49,13 @@ fn run_with<B: Backend>(mut daemon: Daemon<B>, allow_experimental: bool) -> Resu
         .map_err(|error| format!("cannot make listener non-blocking: {error}"))?;
 
     // Restore the persisted settings through the normal validation path,
-    // then keep the file in sync after every accepted mutation.
-    if let Some(state) = load_state_file() {
-        daemon.load_state(state);
-        daemon.reapply_persisted();
-        daemon.take_dirty();
-    }
+    // then keep the file in sync after every accepted mutation.  A
+    // brand-new install (no state file yet) starts from the shipped
+    // factory defaults, which reapply then persists on the first save.
+    let state = load_state_file().unwrap_or_else(crate::config::PersistedState::factory);
+    daemon.load_state(state);
+    daemon.reapply_persisted();
+    daemon.take_dirty();
 
     eprintln!(
         "razer-control daemon: serving {} ({} backend, experimental={})",

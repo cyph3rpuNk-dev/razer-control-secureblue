@@ -48,6 +48,25 @@ fn parse_fan(value: &str) -> Option<FanMode> {
 }
 
 impl PersistedState {
+    /// Shipped first-run defaults, used when no state file exists yet
+    /// (and by the GUI's in-process mock).  A saved file always wins, so
+    /// these only shape a brand-new install: Battery Health Optimizer on
+    /// at the conservative 80% cap, fan power-automation on (automatic on
+    /// both AC and battery), and keyboard backlight at 40% on AC / 20% on
+    /// battery.  `Default` stays empty for the "nothing configured"
+    /// baseline the daemon core and tests build on.
+    pub fn factory() -> Self {
+        PersistedState {
+            battery_health: BatteryHealth::Limit(80),
+            fan_on_ac: Some(FanMode::Auto),
+            fan_on_battery: Some(FanMode::Auto),
+            kbd_brightness: Some(40),
+            kbd_on_ac: Some(40),
+            kbd_on_battery: Some(20),
+            ..PersistedState::default()
+        }
+    }
+
     pub fn render(&self) -> String {
         let mut lines = Vec::new();
         if let Some(fan) = self.fan {
