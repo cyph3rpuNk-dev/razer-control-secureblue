@@ -1,9 +1,9 @@
 /* Fang visual language (fang-razer-linux, GPL-2.0, credited in README):
  * near-black page over slightly-lighter cards with hairline borders, the
  * official Razer green #44d62c as the only accent, and terminal-flavoured
- * monospace uppercase captions with wide letter-spacing.  Palette read off
- * Fang's v0.9.0 screenshots: sidebar #0b0e0c, content #0e100f, cards
- * #131615, borders #202623, muted text in green-tinted greys.  Overriding
+ * monospace uppercase captions with wide letter-spacing.  Layered near-
+ * black surfaces (tuned from Fang's): sidebar #121212, content #222423,
+ * cards #1b1c1c, borders #202623, muted text in green-tinted greys.  Overriding
  * libadwaita's named colors is the supported theming path short of the 1.6
  * runtime accent API. */
 
@@ -11,13 +11,13 @@
 @define-color accent_fg_color #0a0f0a;
 @define-color accent_color #44d62c;
 
-@define-color window_bg_color #0e100f;
+@define-color window_bg_color #222423;
 @define-color window_fg_color #e4e8e4;
-@define-color view_bg_color #131615;
+@define-color view_bg_color #1b1c1c;
 @define-color view_fg_color #e4e8e4;
-@define-color card_bg_color #131615;
+@define-color card_bg_color #1b1c1c;
 @define-color card_fg_color #e4e8e4;
-@define-color headerbar_bg_color #0b0e0c;
+@define-color headerbar_bg_color #121212;
 @define-color headerbar_fg_color #e4e8e4;
 @define-color popover_bg_color #151918;
 @define-color popover_fg_color #e4e8e4;
@@ -29,10 +29,10 @@ headerbar {
   box-shadow: none;
 }
 .fang-sidebar {
-  background-color: #0b0e0c;
+  background-color: #121212;
 }
 .fang-content {
-  background-color: #0e100f;
+  background-color: #222423;
 }
 
 /* Brand mark: app icon plus a wide-tracked wordmark, top-left like FANG's. */
@@ -91,7 +91,7 @@ headerbar {
 
 /* The Fang card: every panel on every page is one of these. */
 .fang-card {
-  background-color: #131615;
+  background-color: #1b1c1c;
   border: 1px solid #202623;
   border-radius: 10px;
   padding: 20px;
@@ -250,7 +250,7 @@ checkbutton label {
 /* Profile cards: Fang's Silent/Balanced/Gaming/Custom row.  A checked card
  * gets the green border and lit dot. */
 button.profile-card {
-  background-color: #131615;
+  background-color: #1b1c1c;
   background-image: none;
   border: 1px solid #202623;
   border-radius: 10px;
@@ -261,7 +261,7 @@ button.profile-card:hover {
   background-color: #161a18;
 }
 button.profile-card:checked {
-  background-color: #131615;
+  background-color: #1b1c1c;
   border-color: #44d62c;
 }
 button.profile-card image {
