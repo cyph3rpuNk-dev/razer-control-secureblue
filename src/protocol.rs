@@ -76,6 +76,199 @@ pub fn response_status(report: &[u8; REPORT_LEN]) -> Option<ResponseStatus> {
     ResponseStatus::from_wire(report[1])
 }
 
+/// Which XOR window the checksum of a successful response satisfied.
+///
+/// Outgoing packets always use the lineage window (see [`crc`]); real Blade
+/// ECs are reported (fang-razer-linux 0.9.1) to answer with the OpenRazer
+/// window instead.  Phase 3 records which one this machine's EC emits; until
+/// then both are accepted and the match is surfaced here so the probe and
+/// the daemon can log the evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CrcWindow {
+    /// XOR of wire bytes 2..88: transaction id through args[78].
+    Lineage,
+    /// XOR of wire bytes 3..=88: remaining-packets through args[79].
+    OpenRazer,
+    /// The two windows coincide on this frame (wire byte 2 equals byte 88)
+    /// and both matched; not evidence for either convention.
+    Ambiguous,
+}
+
+impl CrcWindow {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CrcWindow::Lineage => "lineage",
+            CrcWindow::OpenRazer => "openrazer",
+            CrcWindow::Ambiguous => "ambiguous",
+        }
+    }
+}
+
+/// Why a response buffer was rejected.  Converted to `String` at the
+/// backend boundary; [`ResponseError::is_retryable`] separates malformed or
+/// stale frames (worth one re-send) from the EC's own terminal verdicts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponseError {
+    /// Not exactly [`REPORT_LEN`] bytes.
+    Length(usize),
+    /// Leading HID report number was not 0x00.
+    ReportId(u8),
+    /// A multi-packet response; nothing this module builds elicits one.
+    RemainingPackets(u16),
+    /// Protocol-type byte was not 0x00.
+    ProtocolType(u8),
+    /// Declared data size exceeds the 80 args bytes a report can carry.
+    DataSize(u8),
+    /// Status byte outside the lineage's known set.
+    UnknownStatus(u8),
+    /// A well-formed frame carrying the EC's own non-success verdict.
+    Status(ResponseStatus),
+    /// Success frame whose transaction id is not the one we send.
+    TransactionId(u8),
+    /// Success frame answering some other command: a stale reply.
+    Command { class: u8, id: u8 },
+    /// Success frame not echoing the request's data size.
+    DataSizeEcho { got: u8, expected: u8 },
+    /// Success frame whose checksum matches neither window.
+    Checksum { got: u8, lineage: u8, openrazer: u8 },
+}
+
+impl ResponseError {
+    /// Whether one re-send is worth attempting.  Everything malformed or
+    /// stale is; the EC's own verdicts are terminal — except NEW, which
+    /// means the command has not been processed yet.
+    pub fn is_retryable(self) -> bool {
+        match self {
+            ResponseError::Status(status) => status == ResponseStatus::New,
+            _ => true,
+        }
+    }
+}
+
+impl std::fmt::Display for ResponseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResponseError::Length(actual) => {
+                write!(f, "EC response is {actual} bytes, expected {REPORT_LEN}")
+            }
+            ResponseError::ReportId(actual) => {
+                write!(f, "EC response report number {actual:#04x}, expected 0x00")
+            }
+            ResponseError::RemainingPackets(remaining) => {
+                write!(f, "multi-packet EC response ({remaining} remaining)")
+            }
+            ResponseError::ProtocolType(actual) => {
+                write!(f, "EC response protocol type {actual:#04x}, expected 0x00")
+            }
+            ResponseError::DataSize(actual) => {
+                write!(f, "EC response data size {actual} exceeds {ARGS_LEN}")
+            }
+            ResponseError::UnknownStatus(byte) => {
+                write!(f, "EC returned an unknown status byte ({byte:#04x})")
+            }
+            ResponseError::Status(ResponseStatus::NotSupported) => {
+                write!(f, "EC reports this command as unsupported")
+            }
+            ResponseError::Status(status) => write!(f, "EC returned {status:?}"),
+            ResponseError::TransactionId(actual) => write!(
+                f,
+                "EC response transaction id {actual:#04x}, expected {TRANSACTION_ID:#04x}"
+            ),
+            ResponseError::Command { .. } => write!(f, "EC answered a different command"),
+            ResponseError::DataSizeEcho { got, expected } => {
+                write!(f, "EC response data size {got}, expected {expected}")
+            }
+            ResponseError::Checksum {
+                got,
+                lineage,
+                openrazer,
+            } => write!(
+                f,
+                "EC response checksum {got:#04x} matches neither window (lineage {lineage:#04x}, openrazer {openrazer:#04x})"
+            ),
+        }
+    }
+}
+
+/// A response frame the backend may act on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValidResponse {
+    /// EC busy; a BUSY reply is not required to echo the command, so only
+    /// the frame and status were checked.  Retry — never treat as success.
+    Busy,
+    /// Fully validated successful reply, and which checksum window it
+    /// satisfied.
+    Success { crc_window: CrcWindow },
+}
+
+/// Validates `buf` as the EC's reply to `request`.
+///
+/// Three tiers, so failures attribute precisely: structural frame checks
+/// that any genuine EC frame passes regardless of status; then the status
+/// byte, where BUSY returns early (no echo required) and the EC's other
+/// verdicts are surfaced as errors rather than masked by echo checks; then,
+/// for SUCCESSFUL frames only, the transaction id, command and data-size
+/// echoes and finally the checksum against both known windows.
+pub fn validate_response(request: &Packet, buf: &[u8]) -> Result<ValidResponse, ResponseError> {
+    let report: &[u8; REPORT_LEN] = buf
+        .try_into()
+        .map_err(|_| ResponseError::Length(buf.len()))?;
+    if report[0] != 0 {
+        return Err(ResponseError::ReportId(report[0]));
+    }
+    let remaining = u16::from_be_bytes([report[3], report[4]]);
+    if remaining != 0 {
+        return Err(ResponseError::RemainingPackets(remaining));
+    }
+    if report[5] != 0 {
+        return Err(ResponseError::ProtocolType(report[5]));
+    }
+    let data_size = report[OFFSET_DATA_SIZE];
+    if usize::from(data_size) > ARGS_LEN {
+        return Err(ResponseError::DataSize(data_size));
+    }
+
+    match ResponseStatus::from_wire(report[1]) {
+        None => return Err(ResponseError::UnknownStatus(report[1])),
+        Some(ResponseStatus::Busy) => return Ok(ValidResponse::Busy),
+        Some(ResponseStatus::Success) => {}
+        Some(status) => return Err(ResponseError::Status(status)),
+    }
+
+    if report[OFFSET_TRANSACTION_ID] != TRANSACTION_ID {
+        return Err(ResponseError::TransactionId(report[OFFSET_TRANSACTION_ID]));
+    }
+    if !request.matches_response(report) {
+        return Err(ResponseError::Command {
+            class: report[OFFSET_COMMAND_CLASS],
+            id: report[OFFSET_COMMAND_ID],
+        });
+    }
+    if data_size != request.data_size {
+        return Err(ResponseError::DataSizeEcho {
+            got: data_size,
+            expected: request.data_size,
+        });
+    }
+
+    let lineage = crc(report);
+    let openrazer = crc_openrazer(report);
+    let got = report[OFFSET_CRC];
+    let crc_window = match (got == lineage, got == openrazer) {
+        (true, true) => CrcWindow::Ambiguous,
+        (true, false) => CrcWindow::Lineage,
+        (false, true) => CrcWindow::OpenRazer,
+        (false, false) => {
+            return Err(ResponseError::Checksum {
+                got,
+                lineage,
+                openrazer,
+            });
+        }
+    };
+    Ok(ValidResponse::Success { crc_window })
+}
+
 /// One EC command, not yet serialised.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
@@ -126,6 +319,18 @@ impl Packet {
 /// it rather than the OpenRazer convention (which shifts the window by one).
 pub fn crc(buf: &[u8; REPORT_LEN]) -> u8 {
     buf[2..88].iter().fold(0, |acc, byte| acc ^ byte)
+}
+
+/// XOR checksum over wire bytes 3..=88: the OpenRazer window, which drops
+/// the transaction id and covers all 80 args bytes.
+///
+/// Response validation only.  fang-razer-linux 0.9.1 reports that real
+/// Blade ECs checksum their *responses* with this window, while the lineage
+/// window above is only proven for the packets we send.  Until Phase 3
+/// records which window this machine's EC emits, [`validate_response`]
+/// accepts either and reports the match as a [`CrcWindow`].
+fn crc_openrazer(buf: &[u8; REPORT_LEN]) -> u8 {
+    buf[3..89].iter().fold(0, |acc, byte| acc ^ byte)
 }
 
 /// The EC's combined performance-mode/fan-state command: args are
@@ -332,6 +537,19 @@ mod tests {
 
     fn balanced() -> EcContext {
         EcContext::default()
+    }
+
+    /// Builds a successful response frame for `request`: the EC echoes the
+    /// request's wire bytes with the status set.  The CRC is a literal so a
+    /// change to the validator cannot silently rewrite the expectation —
+    /// for `get_fan_setpoint(Zone::Cpu)` the lineage window sums to 0x91
+    /// and the OpenRazer window to 0x8e (they always differ by
+    /// transaction id ^ args[79], here 0x1f ^ 0x00).
+    fn golden_ok_response(request: &Packet, crc_literal: u8) -> [u8; REPORT_LEN] {
+        let mut buf = request.to_feature_report();
+        buf[1] = 0x02;
+        buf[89] = crc_literal;
+        buf
     }
 
     #[test]
@@ -603,5 +821,209 @@ mod tests {
         assert_eq!(response_status(&report), Some(ResponseStatus::NotSupported));
         report[1] = 0x99;
         assert_eq!(response_status(&report), None);
+    }
+
+    #[test]
+    fn success_response_with_lineage_crc_is_accepted() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        let response = golden_ok_response(&request, 0x91);
+        assert_eq!(
+            validate_response(&request, &response),
+            Ok(ValidResponse::Success {
+                crc_window: CrcWindow::Lineage
+            })
+        );
+    }
+
+    #[test]
+    fn success_response_with_openrazer_crc_is_accepted() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        let response = golden_ok_response(&request, 0x8e);
+        assert_eq!(
+            validate_response(&request, &response),
+            Ok(ValidResponse::Success {
+                crc_window: CrcWindow::OpenRazer
+            })
+        );
+    }
+
+    #[test]
+    fn coinciding_crc_windows_report_ambiguous() {
+        // With args[79] (wire 88) equal to the transaction id the two
+        // windows sum identically; such a frame pins neither convention.
+        let request = get_fan_setpoint(Zone::Cpu);
+        let mut response = golden_ok_response(&request, 0x91);
+        response[88] = 0x1f;
+        assert_eq!(
+            validate_response(&request, &response),
+            Ok(ValidResponse::Success {
+                crc_window: CrcWindow::Ambiguous
+            })
+        );
+    }
+
+    #[test]
+    fn short_or_long_buffers_are_rejected_and_retryable() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        let response = golden_ok_response(&request, 0x91);
+        let error = validate_response(&request, &response[..90]).unwrap_err();
+        assert_eq!(error, ResponseError::Length(90));
+        assert!(error.is_retryable());
+        let mut long = [0u8; REPORT_LEN + 1];
+        long[..REPORT_LEN].copy_from_slice(&response);
+        assert_eq!(
+            validate_response(&request, &long),
+            Err(ResponseError::Length(REPORT_LEN + 1))
+        );
+    }
+
+    #[test]
+    fn invalid_framing_is_rejected() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        let good = golden_ok_response(&request, 0x91);
+
+        let mut wrong_report_id = good;
+        wrong_report_id[0] = 0x01;
+        assert_eq!(
+            validate_response(&request, &wrong_report_id),
+            Err(ResponseError::ReportId(0x01))
+        );
+
+        let mut packets_remaining = good;
+        packets_remaining[3] = 0x01;
+        assert_eq!(
+            validate_response(&request, &packets_remaining),
+            Err(ResponseError::RemainingPackets(256))
+        );
+        let mut one_remaining = good;
+        one_remaining[4] = 0x01;
+        assert_eq!(
+            validate_response(&request, &one_remaining),
+            Err(ResponseError::RemainingPackets(1))
+        );
+
+        let mut wrong_protocol = good;
+        wrong_protocol[5] = 0x01;
+        assert_eq!(
+            validate_response(&request, &wrong_protocol),
+            Err(ResponseError::ProtocolType(0x01))
+        );
+
+        let mut oversized = good;
+        oversized[6] = 81;
+        assert_eq!(
+            validate_response(&request, &oversized),
+            Err(ResponseError::DataSize(81))
+        );
+    }
+
+    #[test]
+    fn wrong_transaction_id_is_rejected() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        // CRC fixed up (0x91 ^ 0x1f ^ 0x3f) so the failure attributes to
+        // the transaction id, not the checksum.
+        let mut response = golden_ok_response(&request, 0xb1);
+        response[2] = 0x3f;
+        assert_eq!(
+            validate_response(&request, &response),
+            Err(ResponseError::TransactionId(0x3f))
+        );
+    }
+
+    #[test]
+    fn stale_command_echo_is_rejected() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        // A well-formed success frame answering get_power_mode's id
+        // instead; CRC fixed up (0x91 ^ 0x81 ^ 0x82).
+        let mut response = golden_ok_response(&request, 0x92);
+        response[8] = 0x82;
+        assert_eq!(
+            validate_response(&request, &response),
+            Err(ResponseError::Command {
+                class: 0x0d,
+                id: 0x82
+            })
+        );
+    }
+
+    #[test]
+    fn data_size_echo_mismatch_is_rejected() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        // Size 4 instead of the request's 3; CRC fixed up (0x91 ^ 0x03 ^ 0x04).
+        let mut response = golden_ok_response(&request, 0x96);
+        response[6] = 0x04;
+        assert_eq!(
+            validate_response(&request, &response),
+            Err(ResponseError::DataSizeEcho {
+                got: 4,
+                expected: 3
+            })
+        );
+    }
+
+    #[test]
+    fn crc_matching_neither_window_is_rejected() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        let response = golden_ok_response(&request, 0x00);
+        let error = validate_response(&request, &response).unwrap_err();
+        assert_eq!(
+            error,
+            ResponseError::Checksum {
+                got: 0x00,
+                lineage: 0x91,
+                openrazer: 0x8e
+            }
+        );
+        assert!(error.is_retryable());
+    }
+
+    #[test]
+    fn busy_reply_without_echo_is_classified_busy() {
+        // A BUSY frame need not echo the command and carries no trusted
+        // checksum; only the frame structure and status byte are checked.
+        let request = get_fan_setpoint(Zone::Cpu);
+        let mut response = [0u8; REPORT_LEN];
+        response[1] = 0x01;
+        response[89] = 0xaa;
+        assert_eq!(
+            validate_response(&request, &response),
+            Ok(ValidResponse::Busy)
+        );
+    }
+
+    #[test]
+    fn terminal_statuses_are_errors_and_only_new_is_retryable() {
+        let request = get_fan_setpoint(Zone::Cpu);
+        for (byte, status) in [
+            (0x03, ResponseStatus::Failure),
+            (0x04, ResponseStatus::Timeout),
+            (0x05, ResponseStatus::NotSupported),
+        ] {
+            let mut response = golden_ok_response(&request, 0x91);
+            response[1] = byte;
+            let error = validate_response(&request, &response).unwrap_err();
+            assert_eq!(error, ResponseError::Status(status));
+            assert!(!error.is_retryable());
+        }
+        // NEW means not processed yet — a stale frame, worth a re-send.
+        let mut unprocessed = golden_ok_response(&request, 0x91);
+        unprocessed[1] = 0x00;
+        let error = validate_response(&request, &unprocessed).unwrap_err();
+        assert_eq!(error, ResponseError::Status(ResponseStatus::New));
+        assert!(error.is_retryable());
+        // So is a status byte outside the known set.
+        let mut unknown = golden_ok_response(&request, 0x91);
+        unknown[1] = 0x99;
+        let error = validate_response(&request, &unknown).unwrap_err();
+        assert_eq!(error, ResponseError::UnknownStatus(0x99));
+        assert!(error.is_retryable());
+    }
+
+    #[test]
+    fn outgoing_crc_stays_on_the_lineage_window() {
+        // The dual-window acceptance is for responses only; packets we
+        // send must keep the lineage checksum real Blades accept.
+        let report = get_fan_setpoint(Zone::Cpu).to_feature_report();
+        assert_eq!(report[89], 0x91);
     }
 }
