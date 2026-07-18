@@ -46,6 +46,31 @@ for this model and no write step below may run.**
 Run `probe` twice more.  Identical output each time is the consistency
 check.
 
+## Step 1a — determine the response CRC window (still no EC writes)
+
+Every reply is now validated strictly, and `probe` ends with a
+`crc_window=` line saying which checksum window the EC's responses
+satisfied.  Two conventions exist: our lineage window (wire bytes 2..88,
+proven only for the packets we *send*) and OpenRazer's (3..=88), which
+fang-razer-linux 0.9.1 reports real Blade ECs use for their *responses*.
+Until this step is recorded, the validator accepts either.
+
+- `crc_window=openrazer` — the expected outcome, matching fang's
+  on-hardware finding.
+- `crc_window=lineage` — possible; it means this model's EC answers with
+  the same window the lineage sends.
+- `crc_window=mixed(...)` or `ambiguous` — stop and file it in
+  `docs/DEVICES.md`; that is a "first surprise" in the sense above
+  (`ambiguous` frames, where wire byte 2 equals byte 88, pin neither
+  convention).
+
+Record the value in `docs/DEVICES.md` next to the Step 1 output, dated,
+with kernel and firmware versions.  Follow-up once recorded: pin the
+validator to the observed window and drop the dual acceptance.  The
+daemon also logs the window once at its first successful exchange, so
+the journals from Step 2 onward capture the same evidence for the write
+path.
+
 ## Step 2 — no-op write
 
 Set the profile to the exact mode Step 1 read back (if it read mode 0,
