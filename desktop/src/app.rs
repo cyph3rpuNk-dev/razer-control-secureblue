@@ -10,7 +10,7 @@ use adw::prelude::*;
 use gtk::glib;
 use gtk::glib::clone;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 const APP_ID: &str = "dev.cyph3rpunk.razer-control";
@@ -27,6 +27,22 @@ const BHO_MAX_PERCENT: f64 = 80.0;
 // Razer green #44d62c on near-black card grey.
 const ACCENT: (f64, f64, f64) = (0.267, 0.839, 0.173);
 const TICK_OFF: (f64, f64, f64) = (0.13, 0.16, 0.14);
+
+// Unified vertical rhythm.  LAYER_SPACING is the single gap between stacked
+// layers inside a card and between cards on a page; TIGHT_SPACING groups a
+// caption with its control (or a heading with its subtitle) so they read as
+// one layer.  Use these instead of ad-hoc numbers so every section matches.
+const LAYER_SPACING: i32 = 16;
+const TIGHT_SPACING: i32 = 6;
+
+// Fan-speed slider track gradient (LOW→HIGH), echoing Synapse's warm→cool
+// sweep: orange #ff5c1c → purple #9c4ec9 → blue #2f80ed.  Approximated from
+// the Synapse screenshot; tune against the real UI.
+const FAN_LOW: (f64, f64, f64) = (1.0, 0.36, 0.11);
+const FAN_MID: (f64, f64, f64) = (0.61, 0.31, 0.79);
+const FAN_HIGH: (f64, f64, f64) = (0.18, 0.50, 0.93);
+// Synapse marks 3800 RPM as the default; we show the same triangle marker.
+const FAN_DEFAULT_RPM: f64 = 3800.0;
 
 pub fn run() -> std::process::ExitCode {
     let app = adw::Application::builder().application_id(APP_ID).build();
@@ -104,26 +120,28 @@ fn build_ui(app: &adw::Application) {
 
     // The brand is the first item of the sidebar content (not an
     // adw::HeaderBar title, which left-offsets it) so it centers over the
-    // full sidebar width.  Its ~46 px height matches the content header,
-    // so the nav list lines up with the content pane's cards.  The sidebar
-    // therefore has no ToolbarView top bar of its own.
+    // full sidebar width.  Its ~46 px height matches the content header.
+    // The sidebar therefore has no ToolbarView top bar of its own.
     let brand = brand_mark();
     brand.set_halign(gtk::Align::Center);
     brand.set_margin_top(13);
     brand.set_margin_bottom(13);
+
+    // Drop the nav list by the same top margin the content pages give their
+    // first card (fang_page: margin_top 16), so the first nav row lines up
+    // with the first card rather than sitting flush under the brand.
+    sidebar_list.set_margin_top(16);
 
     let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
     sidebar_box.append(&brand);
     sidebar_box.append(&sidebar_list);
     sidebar_box.append(&sidebar_footer());
 
-    let page_title = gtk::Label::builder()
-        .label("DASHBOARD")
-        .css_classes(["page-title"])
-        .build();
+    // No page title: the header bar is kept only for the window controls and
+    // to hold the content pane's ~46 px top offset that aligns cards with the
+    // sidebar's nav list.
     let content_header = adw::HeaderBar::new();
     content_header.set_show_title(false);
-    content_header.pack_start(&page_title);
 
     let sidebar_toolbar = adw::ToolbarView::builder()
         .css_classes(["fang-sidebar"])
@@ -153,22 +171,18 @@ fn build_ui(app: &adw::Application) {
         .max_sidebar_width(220.0)
         .build();
 
-    // Row selection switches the page and retitles the content header; when
-    // the split view is collapsed (narrow window) it must also push the
-    // content pane into view.
+    // Row selection switches the page; when the split view is collapsed
+    // (narrow window) it must also push the content pane into view.
     sidebar_list.connect_row_selected(clone!(
         #[weak]
         stack,
         #[weak]
         split,
-        #[weak]
-        page_title,
         move |_, row| {
             if let Some(row) = row
-                && let Some((name, title, _)) = pages.get(row.index() as usize)
+                && let Some((name, _, _)) = pages.get(row.index() as usize)
             {
                 stack.set_visible_child_name(name);
-                page_title.set_text(&title.to_uppercase());
                 if split.is_collapsed() {
                     split.set_show_content(true);
                 }
@@ -276,7 +290,7 @@ fn sidebar_footer() -> gtk::Box {
 fn fang_page(children: &[gtk::Widget]) -> gtk::Widget {
     let page = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(12)
+        .spacing(LAYER_SPACING)
         .margin_top(16)
         .margin_bottom(24)
         .margin_start(24)
@@ -292,7 +306,7 @@ fn fang_page(children: &[gtk::Widget]) -> gtk::Widget {
         .upcast()
 }
 
-/// Uppercase mono section header above a card ("FAN MODE").
+/// Uppercase mono section header above a card ("FAN SPEED").
 fn section_label(text: &str) -> gtk::Widget {
     gtk::Label::builder()
         .label(text)
@@ -302,7 +316,15 @@ fn section_label(text: &str) -> gtk::Widget {
         .upcast()
 }
 
-fn fang_card(spacing: i32) -> gtk::Box {
+/// A content card with the unified inter-layer spacing.  Any new card should
+/// use this so its layers line up with every other section.
+fn fang_card() -> gtk::Box {
+    fang_card_compact(LAYER_SPACING)
+}
+
+/// A card with a custom child spacing, for the compact Dashboard stat cards
+/// (gauges, fan, hardware, status) whose dense layout wants a tighter rhythm.
+fn fang_card_compact(spacing: i32) -> gtk::Box {
     gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(spacing)
@@ -343,10 +365,10 @@ fn segmented(options: &[&str], initial: usize) -> (gtk::Box, Vec<gtk::ToggleButt
     (container, buttons)
 }
 
-/// Performance page, in Fang's order: profile cards, CPU/GPU power levels,
-/// fan mode, power automation, system status.  The profile controls stay
-/// insensitive unless the daemon reports `experimental=true` — they drive
-/// EC commands that Phase 3 has not yet verified on hardware.
+/// Performance page: three titled cards — PERFORMANCE MODE (profiles + CPU/GPU
+/// power), FAN SPEED, and POWER AUTOMATION.  The profile controls stay
+/// insensitive unless the daemon reports `experimental=true` — they drive EC
+/// commands that Phase 3 has not yet verified on hardware.
 fn performance_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
     let status = request_fields("status");
     let experimental = status.get("experimental").map(String::as_str) == Some("true");
@@ -354,37 +376,66 @@ fn performance_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
         .get("profile")
         .map_or("balanced", String::as_str)
         .to_owned();
-    let (profile_row, power_card) = build_profile_ui(overlay, experimental, &current_profile);
-    let fan_card = fang_card(14);
+
+    // Card 1: PERFORMANCE MODE — profile cards over the CPU/GPU power controls.
+    let (profile_row, power_box) = build_profile_ui(overlay, experimental, &current_profile);
+    let perf_card = fang_card();
+    perf_card.append(&card_header(
+        "PERFORMANCE MODE",
+        "Switch the overall power and acoustics profile; Custom lets you set CPU and GPU power \
+         yourself.",
+    ));
+    perf_card.append(&profile_row);
+    if !experimental {
+        perf_card.append(&note_label(
+            "Profiles are locked: they send EC commands not yet verified on this machine \
+             (Phase 3). Start the daemon with --experimental to enable them.",
+        ));
+    }
+    perf_card.append(&power_box);
+
+    // Card 2: FAN SPEED — auto/manual toggle over the gradient slider.
     let (seg_box, seg) = segmented(&["AUTO", "MANUAL"], 0);
-    let rpm_scale = value_scale(FAN_MIN_RPM, FAN_MAX_RPM, 50.0, 3000.0);
-    rpm_scale.set_sensitive(false);
-    let rpm_box = labelled_scale("MANUAL SPEED — RPM", &rpm_scale);
+    let fan = build_fan_slider(FAN_MIN_RPM, FAN_MAX_RPM, 50.0, FAN_DEFAULT_RPM);
     let apply = accent_button("APPLY");
     apply.set_halign(gtk::Align::End);
+    let fan_card = fang_card();
+    fan_card.append(&card_header(
+        "FAN SPEED",
+        "Auto lets the system manage cooling; Manual holds the fan at the RPM you pick.",
+    ));
     fan_card.append(&seg_box);
-    fan_card.append(&rpm_box);
+    fan_card.append(&fan.root);
     fan_card.append(&note_label(
         "Manual fan control reverts to automatic on logout.",
     ));
     fan_card.append(&apply);
 
+    let fan_enabled = fan.enabled.clone();
+    let fan_value = fan.value.clone();
+    let fan_area = fan.area.clone();
+
     let manual = seg[1].clone();
     manual.connect_toggled(clone!(
+        #[strong]
+        fan_enabled,
         #[weak]
-        rpm_scale,
-        move |button| rpm_scale.set_sensitive(button.is_active())
+        fan_area,
+        move |button| {
+            fan_enabled.set(button.is_active());
+            fan_area.queue_draw();
+        }
     ));
     apply.connect_clicked(clone!(
         #[weak]
         manual,
-        #[weak]
-        rpm_scale,
+        #[strong]
+        fan_value,
         #[weak]
         overlay,
         move |_| {
             let line = if manual.is_active() {
-                format!("fan manual {}", rpm_scale.value().round() as u16)
+                format!("fan manual {}", fan_value.get().round() as u16)
             } else {
                 "fan auto".to_owned()
             };
@@ -392,32 +443,22 @@ fn performance_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
         }
     ));
 
+    // Card 3: POWER AUTOMATION (heading/subtitle live in the builder).
     let automation_card = build_automation_card(overlay);
 
-    let mut children: Vec<gtk::Widget> = vec![section_label("PROFILE"), profile_row.upcast()];
-    if !experimental {
-        children.push(
-            note_label(
-                "Profiles are locked: they send EC commands not yet verified on this \
-                 machine (Phase 3). Start the daemon with --experimental to enable them.",
-            )
-            .upcast(),
-        );
-    }
-    children.extend([
-        power_card.upcast(),
-        section_label("FAN MODE"),
+    let children: [gtk::Widget; 3] = [
+        perf_card.upcast(),
         fan_card.upcast(),
-        section_label("POWER AUTOMATION"),
         automation_card.upcast(),
-    ]);
+    ];
     fang_page(&children)
 }
 
-/// Fang's profile row and CPU/GPU power card.  Every click sends one
-/// `profile …` request; the daemon validates and the dry-run or hidraw
-/// backend does the rest.  The power card only responds while Custom is the
-/// active profile, exactly like Fang.
+/// Fang's profile row and the CPU/GPU power controls (returned as a plain box
+/// so the caller can nest them inside the PERFORMANCE MODE card).  Every click
+/// sends one `profile …` request; the daemon validates and the dry-run or
+/// hidraw backend does the rest.  The power controls only respond while Custom
+/// is the active profile, exactly like Fang.
 fn build_profile_ui(
     overlay: &adw::ToastOverlay,
     experimental: bool,
@@ -491,7 +532,7 @@ fn build_profile_ui(
         cards.push(card);
     }
 
-    let cpu_col = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let cpu_col = gtk::Box::new(gtk::Orientation::Vertical, TIGHT_SPACING);
     cpu_col.append(&{
         let caption = dash_label("CPU POWER");
         caption.set_halign(gtk::Align::Start);
@@ -499,7 +540,7 @@ fn build_profile_ui(
     });
     let (cpu_seg_box, cpu_seg) = segmented(&["LOW", "MEDIUM", "HIGH", "BOOST"], 1);
     cpu_col.append(&cpu_seg_box);
-    let gpu_col = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let gpu_col = gtk::Box::new(gtk::Orientation::Vertical, TIGHT_SPACING);
     gpu_col.append(&{
         let caption = dash_label("GPU POWER");
         caption.set_halign(gtk::Align::Start);
@@ -510,8 +551,11 @@ fn build_profile_ui(
     let columns = gtk::Box::new(gtk::Orientation::Horizontal, 48);
     columns.append(&cpu_col);
     columns.append(&gpu_col);
-    let power_card = fang_card(10);
-    power_card.append(&columns);
+    let power_box = gtk::Box::new(gtk::Orientation::Vertical, TIGHT_SPACING);
+    power_box.append(&columns);
+    power_box.append(&note_label(
+        "Higher levels raise sustained power and heat. Available on the Custom profile.",
+    ));
 
     // Initial selection mirrors the daemon's current profile, boost
     // segments included, before any handler is connected.
@@ -529,7 +573,7 @@ fn build_profile_ui(
     }
     cards[initial].set_active(true);
     row.set_sensitive(experimental);
-    power_card.set_sensitive(experimental && initial == 3);
+    power_box.set_sensitive(experimental && initial == 3);
 
     let checked = |buttons: &[gtk::ToggleButton]| {
         buttons
@@ -556,11 +600,11 @@ fn build_profile_ui(
             #[weak]
             overlay,
             #[weak]
-            power_card,
+            power_box,
             #[weak]
             custom_card,
             move |card| {
-                power_card.set_sensitive(experimental && custom_card.is_active());
+                power_box.set_sensitive(experimental && custom_card.is_active());
                 if !card.is_active() {
                     return;
                 }
@@ -589,7 +633,7 @@ fn build_profile_ui(
         ));
     }
 
-    (row, power_card)
+    (row, power_box)
 }
 
 /// Fang's power-automation card: a master OFF|ON, then one row per power
@@ -597,7 +641,11 @@ fn build_profile_ui(
 /// the fans at the verified 2000 RPM floor; every click applies instantly
 /// through the daemon's `automation` rules, which persist across restarts.
 fn build_automation_card(overlay: &adw::ToastOverlay) -> gtk::Box {
-    let card = fang_card(14);
+    let card = fang_card();
+    card.append(&card_header(
+        "POWER AUTOMATION",
+        "Change fan behaviour automatically when you switch between AC and battery.",
+    ));
 
     // Current rules, so reopening the app shows what the daemon will do.
     let status = request_fields("status");
@@ -606,13 +654,16 @@ fn build_automation_card(overlay: &adw::ToastOverlay) -> gtk::Box {
     let battery_rule = rule("automation_battery");
     let enabled = ac_rule != "off" || battery_rule != "off";
 
-    let description = note_label("Switch fan behaviour automatically when you plug in or unplug.");
+    let enable_caption = gtk::Label::builder()
+        .label("ENABLE")
+        .css_classes(["dash-label"])
+        .build();
     let (master_box, master) = segmented(&["OFF", "ON"], usize::from(enabled));
     master_box.set_halign(gtk::Align::End);
     master_box.set_hexpand(true);
     master_box.set_valign(gtk::Align::Start);
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    header.append(&description);
+    header.append(&enable_caption);
     header.append(&master_box);
     card.append(&header);
 
@@ -749,7 +800,7 @@ fn battery_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
         None => (false, BHO_MAX_PERCENT),
     };
 
-    let card = fang_card(12);
+    let card = fang_card();
 
     // Heading row: green heading on the left, toggle switch on the right.
     let switch = gtk::Switch::builder()
@@ -855,7 +906,7 @@ struct StatusLabels {
 /// on, and the power source.  Pure display, updated from the 1 Hz poll —
 /// no manual refresh, no raw wire strings.
 fn build_status_card() -> (gtk::Box, StatusLabels) {
-    let card = fang_card(0);
+    let card = fang_card_compact(0);
     // The card packs its rows with no inter-child spacing, so the heading
     // needs its own gap to sit apart from the first row.
     let heading = card_heading("SYSTEM STATUS");
@@ -1106,7 +1157,7 @@ fn display_page(overlay: &adw::ToastOverlay) -> gtk::Widget {
             left.append(&laptop_display_card(overlay, name, modes));
         }
         None => {
-            let card = fang_card(10);
+            let card = fang_card();
             card.append(&card_heading("LAPTOP DISPLAY"));
             card.append(&note_label(
                 "No controllable display in this session: kscreen-doctor (KDE) \
@@ -1148,6 +1199,26 @@ fn card_heading(text: &str) -> gtk::Label {
         .build()
 }
 
+/// Muted one-line description under a card heading.
+fn card_subtitle(text: &str) -> gtk::Label {
+    gtk::Label::builder()
+        .label(text)
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .wrap(true)
+        .css_classes(["card-subtitle"])
+        .build()
+}
+
+/// Heading + subtitle grouped as a tight title block, so a card's
+/// `LAYER_SPACING` separates only the content groups below it.
+fn card_header(title: &str, subtitle: &str) -> gtk::Box {
+    let block = gtk::Box::new(gtk::Orientation::Vertical, TIGHT_SPACING);
+    block.append(&card_heading(title));
+    block.append(&card_subtitle(subtitle));
+    block
+}
+
 /// Synapse's GPU MODE card: one radio row per mode with a description.
 /// With no switching tool installed the list stays locked under an
 /// explanatory note; a successful switch shows the pending note (a GPU
@@ -1182,7 +1253,7 @@ fn gpu_mode_card(
             .unwrap_or(0)
     };
 
-    let card = fang_card(12);
+    let card = fang_card();
     card.append(&card_heading("GPU MODE"));
 
     let list = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -1507,7 +1578,7 @@ fn laptop_display_card(
         .map(|(resolution, _)| resolution.replace('x', " x "))
         .unwrap_or_default();
 
-    let card = fang_card(12);
+    let card = fang_card();
     card.append(&card_heading("LAPTOP DISPLAY"));
     card.append(&{
         let caption = dash_label("CURRENT RESOLUTION");
@@ -1629,7 +1700,7 @@ fn save_battery_60hz(on: bool) {
 
 /// Synapse's COLOR PROFILE card, pointed at KDE's color management.
 fn color_profile_card(overlay: &adw::ToastOverlay) -> gtk::Box {
-    let card = fang_card(10);
+    let card = fang_card();
     card.append(&card_heading("COLOR PROFILE"));
     card.append(&note_label(
         "ICC profiles and calibration are managed by KDE's color settings.",
@@ -1673,7 +1744,7 @@ fn external_display_card(
     overlay: &adw::ToastOverlay,
     externals: &[&(String, Vec<DisplayMode>)],
 ) -> gtk::Box {
-    let card = fang_card(12);
+    let card = fang_card();
     card.append(&card_heading("EXTERNAL DISPLAY"));
     for (name, modes) in externals {
         let (candidates, initial) = rate_candidates(modes);
@@ -1759,7 +1830,7 @@ fn brightness_card() -> Option<gtk::Box> {
     );
     scale.set_draw_value(false);
 
-    let card = fang_card(10);
+    let card = fang_card();
     card.append(&card_heading("LAPTOP PANEL BRIGHTNESS"));
     card.append(&readout);
     card.append(&scale);
@@ -1864,7 +1935,7 @@ fn keyboard_backlight_card(
     experimental: bool,
     status: &HashMap<String, String>,
 ) -> gtk::Box {
-    let card = fang_card(12);
+    let card = fang_card();
     card.append(&card_heading("KEYBOARD BACKLIGHT"));
 
     // Per-power-source brightness (Synapse).  Rules come from the daemon;
@@ -2064,7 +2135,7 @@ fn keyboard_backlight_card(
 /// the session idle time; past the threshold the keyboard backlight goes
 /// to 0%, and activity restores the active power source's brightness.
 fn switch_off_card() -> gtk::Box {
-    let card = fang_card(12);
+    let card = fang_card();
     card.append(&card_heading("SWITCH OFF LIGHTING"));
 
     let enabled = gtk::CheckButton::builder()
@@ -2177,7 +2248,7 @@ fn logo_card(
     experimental: bool,
     status: &HashMap<String, String>,
 ) -> gtk::Box {
-    let card = fang_card(12);
+    let card = fang_card();
     card.append(&card_heading("LID LOGO"));
     let initial = match status.get("logo").map(String::as_str) {
         Some("off") => 0,
@@ -2226,7 +2297,7 @@ fn ddc_monitor_card(overlay: &adw::ToastOverlay) -> Option<gtk::Box> {
         }
     }
 
-    let card = fang_card(12);
+    let card = fang_card();
     card.append(&card_heading("EXTERNAL MONITOR"));
     if simulated {
         card.append(&note_label("DDC (simulated)"));
@@ -2295,24 +2366,97 @@ fn ddc_set(simulated: bool, feature: &str, value: &str) -> Result<String, String
     }
 }
 
-const SPARKLINE_CAPACITY: usize = 90;
 const GAUGE_MIN_C: f64 = 30.0;
 const GAUGE_MAX_C: f64 = 100.0;
 
-/// Fang-style dashboard: gauge, fan, and power cards over two side-by-side
-/// 90-second history charts and an active-profile bar, fed by the daemon's
-/// read-only `telemetry` request at 1 Hz.  Pure display — no control lives
-/// here.
+/// Rendered height of the dashboard's laptop portrait, in pixels.
+const LAPTOP_BANNER_HEIGHT: i32 = 200;
+
+/// The Blade portrait card at the top of the dashboard: the laptop image over
+/// its model-name caption and a live `utilisation% · device` sub-readout,
+/// matching the gauge cards.  Returns the card and the sub-readout label the
+/// dashboard's 1 Hz loop fills.
+///
+/// The PNG is baked into the binary with `include_bytes!` (like the
+/// stylesheet), so it needs no install-path lookup and ships wherever the
+/// binary does.  It is decoded once at *full* resolution and painted into a
+/// fixed-height `DrawingArea` with Cairo, which resamples the source at the
+/// real device-pixel size on every draw.  An earlier version pre-scaled the
+/// pixbuf to the banner height and handed it to a `GtkPicture`; that baked in
+/// a low-resolution raster, so maximizing the window (or any HiDPI /
+/// fractional display scale) forced GTK to *upscale* it and the laptop went
+/// soft.  Downscaling a full-res source instead stays sharp at any size.
+/// (Cairo is also the only sharp path here: the gtk4 crate hides
+/// `Texture::from_bytes`/`Picture::set_content_fit` behind a `v4_x` feature
+/// this crate does not enable, and CI builds against GTK 4.14.)
+fn build_laptop_banner() -> (gtk::Box, gtk::Label) {
+    use gtk::gdk::prelude::GdkCairoContextExt;
+
+    let card = fang_card_compact(6);
+    let bytes = glib::Bytes::from_static(include_bytes!("../resources/1532-029d.png"));
+    let stream = gtk::gio::MemoryInputStream::from_bytes(&bytes);
+    match gtk::gdk_pixbuf::Pixbuf::from_stream(&stream, gtk::gio::Cancellable::NONE) {
+        Ok(pixbuf) => {
+            let (source_w, source_h) = (pixbuf.width(), pixbuf.height());
+            // Fixed natural size, width derived from the aspect ratio, so a
+            // near-square photo does not dominate the page and the row stays a
+            // constant height.
+            let content_w =
+                (LAPTOP_BANNER_HEIGHT as f64 * source_w as f64 / source_h as f64).round() as i32;
+            let area = gtk::DrawingArea::new();
+            area.set_content_height(LAPTOP_BANNER_HEIGHT);
+            area.set_content_width(content_w);
+            area.set_halign(gtk::Align::Center);
+
+            let pixbuf = Rc::new(pixbuf);
+            area.set_draw_func(move |_, cr, width, height| {
+                // Contain: scale to fit while preserving aspect, centred on any
+                // rounding slack.  Cairo samples the full-res pixbuf at the
+                // surface's device resolution, so the result is crisp at every
+                // window size.
+                let scale = (width as f64 / source_w as f64).min(height as f64 / source_h as f64);
+                let (draw_w, draw_h) = (source_w as f64 * scale, source_h as f64 * scale);
+                cr.translate(
+                    (width as f64 - draw_w) / 2.0,
+                    (height as f64 - draw_h) / 2.0,
+                );
+                cr.scale(scale, scale);
+                cr.set_source_pixbuf(&pixbuf, 0.0, 0.0);
+                // High-quality resampling for the downscale.
+                cr.source().set_filter(gtk::cairo::Filter::Good);
+                let _ = cr.paint();
+            });
+            card.append(&area);
+        }
+        // A decode failure is cosmetic: keep the card (and its caption/readout)
+        // rather than fail the whole dashboard.
+        Err(error) => eprintln!("dashboard: could not load laptop image: {error}"),
+    }
+
+    let sub_label = gtk::Label::builder()
+        .label("")
+        .css_classes(["dash-subvalue"])
+        .build();
+    // Own class (not the shared .dash-label) so this caption can be larger and
+    // white without touching the CPU/GPU/FAN captions; uppercased in code
+    // because GTK CSS text-transform is not dependable across versions.
+    let caption = gtk::Label::builder()
+        .label(razer_control_secureblue::BLADE_14_2023.name.to_uppercase())
+        .halign(gtk::Align::Center)
+        .css_classes(["laptop-caption"])
+        .build();
+    card.append(&caption);
+    card.append(&sub_label);
+    (card, sub_label)
+}
+
+/// Fang-style dashboard: a Blade portrait over the CPU/GPU gauges and a fan
+/// card, above the hardware and system-status cards, fed by the daemon's
+/// read-only `telemetry` request at 1 Hz.  Pure display — no control here.
 fn dashboard_page() -> gtk::Widget {
     let cpu_value = Rc::new(Cell::new(None::<f64>));
     let gpu_value = Rc::new(Cell::new(None::<f64>));
     let fan_value = Rc::new(Cell::new(None::<f64>));
-    let cpu_history = Rc::new(RefCell::new(VecDeque::<f64>::with_capacity(
-        SPARKLINE_CAPACITY,
-    )));
-    let fan_history = Rc::new(RefCell::new(VecDeque::<f64>::with_capacity(
-        SPARKLINE_CAPACITY,
-    )));
 
     // Fang's top row: CPU PACKAGE and GPU CORE gauges, then the fan card.
     let (cpu_card, cpu_area, cpu_value_label, cpu_sub) =
@@ -2334,18 +2478,6 @@ fn dashboard_page() -> gtk::Widget {
     cards.append(&gpu_card);
     cards.append(&fan_card);
 
-    let (cpu_chart_card, cpu_chart_area, cpu_chart_value) =
-        build_sparkline_card("CPU TEMPERATURE — 90 S", Rc::clone(&cpu_history));
-    let (fan_chart_card, fan_chart_area, fan_chart_value) =
-        build_sparkline_card("FAN SPEED — 90 S", Rc::clone(&fan_history));
-    let charts = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(16)
-        .homogeneous(true)
-        .build();
-    charts.append(&cpu_chart_card);
-    charts.append(&fan_chart_card);
-
     // Static machine identity, read once (does not change while running).
     let sysinfo = request_sysinfo();
     let has_dgpu = sysinfo.get("gpu_dgpu").is_some_and(|value| value != "none");
@@ -2362,8 +2494,9 @@ fn dashboard_page() -> gtk::Widget {
         .margin_start(24)
         .margin_end(24)
         .build();
+    let (laptop_card, laptop_sub) = build_laptop_banner();
+    page.append(&laptop_card);
     page.append(&cards);
-    page.append(&charts);
     page.append(&hardware_card);
     page.append(&status_card);
 
@@ -2380,10 +2513,6 @@ fn dashboard_page() -> gtk::Widget {
         let cpu = field("cpu_temp");
         cpu_value.set(cpu);
         cpu_value_label.set_text(&cpu.map_or("—".to_owned(), |t| format!("{t:.0}")));
-        if let Some(temperature) = cpu {
-            push_sample(&cpu_history, temperature);
-            cpu_chart_value.set_text(&format!("{temperature:.0} °C"));
-        }
         // CPU sub-readout: utilisation · clock.
         let mut cpu_parts = Vec::new();
         if let Some(util) = field("cpu_util") {
@@ -2415,10 +2544,6 @@ fn dashboard_page() -> gtk::Widget {
         let fan = field("fan_rpm");
         fan_value.set(fan);
         fan_value_label.set_text(&fan.map_or("—".to_owned(), |rpm| format!("{rpm:.0}")));
-        if let Some(rpm) = fan {
-            push_sample(&fan_history, rpm);
-            fan_chart_value.set_text(&format!("{rpm:.0} rpm"));
-        }
 
         // Live memory row on the hardware card.
         if let (Some(used), Some(total)) = (field("mem_used"), field("mem_total"))
@@ -2435,10 +2560,14 @@ fn dashboard_page() -> gtk::Widget {
         // The active profile and fan mode are rows in the SYSTEM STATUS
         // card now, alongside device/backend/power/connection.
         update_status_labels(&status_labels, &status);
+
+        // Laptop card sub-readout: the device id (its model name is the
+        // card's caption above).
+        let device = status.get("device").map_or("—", String::as_str);
+        laptop_sub.set_text(device);
+
         cpu_area.queue_draw();
         gpu_area.queue_draw();
-        cpu_chart_area.queue_draw();
-        fan_chart_area.queue_draw();
         glib::ControlFlow::Continue
     });
 
@@ -2448,14 +2577,6 @@ fn dashboard_page() -> gtk::Widget {
         .child(&page)
         .build()
         .upcast()
-}
-
-fn push_sample(history: &Rc<RefCell<VecDeque<f64>>>, sample: f64) {
-    let mut samples = history.borrow_mut();
-    if samples.len() == SPARKLINE_CAPACITY {
-        samples.pop_front();
-    }
-    samples.push_back(sample);
 }
 
 /// One daemon request parsed into its `key=value` fields; empty on error.
@@ -2502,7 +2623,7 @@ fn join_or_dash(parts: &[String]) -> String {
 /// Returns the card and the MEMORY value label, which the dashboard
 /// updates live each tick.
 fn build_hardware_card(sysinfo: &HashMap<String, String>) -> (gtk::Box, gtk::Label) {
-    let card = fang_card(0);
+    let card = fang_card_compact(0);
     let heading = card_heading("HARDWARE");
     heading.set_margin_bottom(10);
     card.append(&heading);
@@ -2637,7 +2758,7 @@ fn build_gauge_card(
         .css_classes(["dash-subvalue"])
         .build();
 
-    let card = fang_card(6);
+    let card = fang_card_compact(6);
     card.append(&overlay);
     card.append(&dash_label(caption));
     card.append(&sub_label);
@@ -2764,72 +2885,11 @@ fn build_fan_card(rpm: Rc<Cell<Option<f64>>>) -> (gtk::Box, gtk::Label) {
     readout.append(&value_label);
     readout.append(&unit_label);
 
-    let card = fang_card(6);
+    let card = fang_card_compact(6);
     card.append(&area);
     card.append(&readout);
     card.append(&dash_label("FAN TARGET"));
     (card, value_label)
-}
-
-/// 90-sample line chart drawn with cairo; scales to the data's own range
-/// with a little headroom so idle temperatures do not flatline at the edge.
-fn build_sparkline_card(
-    caption: &str,
-    history: Rc<RefCell<VecDeque<f64>>>,
-) -> (gtk::Box, gtk::DrawingArea, gtk::Label) {
-    let area = gtk::DrawingArea::builder()
-        .content_height(90)
-        .hexpand(true)
-        .build();
-    area.set_draw_func(move |_, cr, width, height| {
-        let samples = history.borrow();
-        if samples.len() < 2 {
-            return;
-        }
-        let low = samples.iter().cloned().fold(f64::INFINITY, f64::min) - 2.0;
-        let high = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max) + 2.0;
-        let x_step = width as f64 / (SPARKLINE_CAPACITY - 1) as f64;
-        let project = |sample: f64| {
-            let normalised = (sample - low) / (high - low);
-            height as f64 - normalised * (height as f64 - 8.0) - 4.0
-        };
-        cr.set_source_rgba(ACCENT.0, ACCENT.1, ACCENT.2, 0.15);
-        cr.move_to(0.0, height as f64);
-        for (index, sample) in samples.iter().enumerate() {
-            cr.line_to(index as f64 * x_step, project(*sample));
-        }
-        cr.line_to((samples.len() - 1) as f64 * x_step, height as f64);
-        let _ = cr.fill();
-        cr.set_source_rgb(ACCENT.0, ACCENT.1, ACCENT.2);
-        cr.set_line_width(2.0);
-        for (index, sample) in samples.iter().enumerate() {
-            let x = index as f64 * x_step;
-            let y = project(*sample);
-            if index == 0 {
-                cr.move_to(x, y);
-            } else {
-                cr.line_to(x, y);
-            }
-        }
-        let _ = cr.stroke();
-    });
-
-    let caption_label = dash_label(caption);
-    caption_label.set_halign(gtk::Align::Start);
-    let value_label = gtk::Label::builder()
-        .label("—")
-        .halign(gtk::Align::End)
-        .hexpand(true)
-        .css_classes(["chart-value"])
-        .build();
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    header.append(&caption_label);
-    header.append(&value_label);
-
-    let card = fang_card(6);
-    card.append(&header);
-    card.append(&area);
-    (card, area, value_label)
 }
 
 fn value_scale(min: f64, max: f64, step: f64, initial: f64) -> gtk::Scale {
@@ -2839,6 +2899,301 @@ fn value_scale(min: f64, max: f64, step: f64, initial: f64) -> gtk::Scale {
     scale.set_round_digits(0);
     scale.set_hexpand(true);
     scale
+}
+
+/// A shared handle to the custom fan-speed slider so callers can read its
+/// value and enable/disable it (Manual vs. Auto) while the widget owns its own
+/// drawing and input.
+struct FanSlider {
+    root: gtk::Widget,
+    area: gtk::DrawingArea,
+    value: Rc<Cell<f64>>,
+    enabled: Rc<Cell<bool>>,
+}
+
+/// Horizontal padding reserved at each end of the fan slider for the LOW/HIGH
+/// icons.  Shared by the draw and the pointer→value mapping so they never
+/// disagree about where the track starts.
+fn fan_track_bounds(width: f64) -> (f64, f64) {
+    const ICON_ZONE: f64 = 58.0;
+    (ICON_ZONE + 10.0, width - ICON_ZONE - 10.0)
+}
+
+/// Map a pointer x (widget coords) to a snapped, clamped RPM.
+fn fan_value_from_x(x: f64, width: f64, min: f64, max: f64, step: f64) -> f64 {
+    let (left, right) = fan_track_bounds(width);
+    let fraction = ((x - left) / (right - left).max(1.0)).clamp(0.0, 1.0);
+    let value = min + fraction * (max - min);
+    ((value / step).round() * step).clamp(min, max)
+}
+
+fn fan_rounded_rect(cr: &gtk::cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
+    let r = r.min(w / 2.0).min(h / 2.0);
+    let pi = std::f64::consts::PI;
+    cr.new_sub_path();
+    cr.arc(x + w - r, y + r, r, -pi / 2.0, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, pi / 2.0);
+    cr.arc(x + r, y + h - r, r, pi / 2.0, pi);
+    cr.arc(x + r, y + r, r, pi, 1.5 * pi);
+    cr.close_path();
+}
+
+fn fan_draw_centered_text(cr: &gtk::cairo::Context, text: &str, cx: f64, baseline_y: f64) {
+    if let Ok(extents) = cr.text_extents(text) {
+        cr.move_to(cx - extents.width() / 2.0 - extents.x_bearing(), baseline_y);
+        let _ = cr.show_text(text);
+    }
+}
+
+/// End-cap fan/turbine icon: curved blades around a hub, in the given colour.
+/// The same mark serves LOW (orange) and HIGH (blue), matching Synapse.
+fn fan_draw_turbine(
+    cr: &gtk::cairo::Context,
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    color: (f64, f64, f64),
+    alpha: f64,
+) {
+    let pi = std::f64::consts::PI;
+    cr.set_source_rgba(color.0, color.1, color.2, alpha);
+    let blades = 7;
+    for blade in 0..blades {
+        let _ = cr.save();
+        cr.translate(cx, cy);
+        cr.rotate(blade as f64 / blades as f64 * 2.0 * pi);
+        cr.move_to(0.0, 0.0);
+        cr.curve_to(
+            radius * 0.35,
+            -radius * 0.28,
+            radius * 0.9,
+            -radius * 0.22,
+            radius * 0.82,
+            0.0,
+        );
+        cr.curve_to(
+            radius * 0.7,
+            radius * 0.16,
+            radius * 0.3,
+            radius * 0.12,
+            0.0,
+            0.0,
+        );
+        let _ = cr.fill();
+        let _ = cr.restore();
+    }
+    // Dark hub with a small coloured centre, like the dashboard fan.
+    cr.set_source_rgba(0.09, 0.10, 0.09, alpha);
+    cr.arc(cx, cy, radius * 0.30, 0.0, 2.0 * pi);
+    let _ = cr.fill();
+    cr.set_source_rgba(color.0, color.1, color.2, alpha);
+    cr.arc(cx, cy, radius * 0.12, 0.0, 2.0 * pi);
+    let _ = cr.fill();
+}
+
+/// HIGH end-cap: three blue airflow waves.
+fn fan_draw_waves(cr: &gtk::cairo::Context, cx: f64, cy: f64, alpha: f64) {
+    cr.set_source_rgba(0.18, 0.50, 0.93, alpha);
+    cr.set_line_width(2.5);
+    for row in 0..3 {
+        let y = cy - 9.0 + row as f64 * 9.0;
+        cr.move_to(cx - 13.0, y);
+        cr.curve_to(cx - 4.0, y - 6.0, cx + 4.0, y + 6.0, cx + 13.0, y);
+        let _ = cr.stroke();
+    }
+}
+
+/// Synapse-style fan-speed slider drawn with Cairo: a warm→cool gradient
+/// track, a green thumb with a floating value bubble, a green default-RPM
+/// marker, and LOW/HIGH end caps.  A native `GtkScale` cannot show the
+/// gradient track or the following value bubble, so this owns its own drawing
+/// and pointer/keyboard input.
+fn build_fan_slider(min: f64, max: f64, step: f64, default: f64) -> FanSlider {
+    let value = Rc::new(Cell::new(default.clamp(min, max)));
+    let enabled = Rc::new(Cell::new(false));
+
+    let area = gtk::DrawingArea::new();
+    area.set_content_height(112);
+    area.set_hexpand(true);
+    area.set_focusable(true);
+
+    area.set_draw_func(clone!(
+        #[strong]
+        value,
+        #[strong]
+        enabled,
+        move |_, cr, width, height| {
+            let (w, h) = (width as f64, height as f64);
+            let pi = std::f64::consts::PI;
+            let on = enabled.get();
+            let dim = if on { 1.0 } else { 0.4 };
+            let (left, right) = fan_track_bounds(w);
+            let span = (right - left).max(1.0);
+            let track_y = h - 42.0;
+            let track_h = 8.0;
+            let fraction = |v: f64| ((v - min) / (max - min)).clamp(0.0, 1.0);
+            let thumb_x = left + fraction(value.get()) * span;
+            let default_x = left + fraction(default) * span;
+
+            // Warm→cool gradient track.
+            let gradient = gtk::cairo::LinearGradient::new(left, 0.0, right, 0.0);
+            gradient.add_color_stop_rgba(0.0, FAN_LOW.0, FAN_LOW.1, FAN_LOW.2, dim);
+            gradient.add_color_stop_rgba(0.5, FAN_MID.0, FAN_MID.1, FAN_MID.2, dim);
+            gradient.add_color_stop_rgba(1.0, FAN_HIGH.0, FAN_HIGH.1, FAN_HIGH.2, dim);
+            fan_rounded_rect(
+                cr,
+                left,
+                track_y - track_h / 2.0,
+                span,
+                track_h,
+                track_h / 2.0,
+            );
+            let _ = cr.set_source(&gradient);
+            let _ = cr.fill();
+
+            // Default-RPM marker: a green triangle below the track.
+            let marker_y = track_y + track_h / 2.0 + 5.0;
+            cr.set_source_rgba(ACCENT.0, ACCENT.1, ACCENT.2, dim);
+            cr.move_to(default_x, marker_y);
+            cr.line_to(default_x - 5.0, marker_y + 8.0);
+            cr.line_to(default_x + 5.0, marker_y + 8.0);
+            cr.close_path();
+            let _ = cr.fill();
+
+            // Thumb.
+            cr.set_source_rgba(ACCENT.0, ACCENT.1, ACCENT.2, dim);
+            cr.arc(thumb_x, track_y, 9.0, 0.0, 2.0 * pi);
+            let _ = cr.fill();
+
+            // Value bubble above the thumb (only while manual/enabled).
+            if on {
+                let text = format!("{}", value.get().round() as i32);
+                cr.select_font_face(
+                    "monospace",
+                    gtk::cairo::FontSlant::Normal,
+                    gtk::cairo::FontWeight::Bold,
+                );
+                cr.set_font_size(13.0);
+                let text_w = cr.text_extents(&text).map(|e| e.width()).unwrap_or(28.0);
+                let bubble_w = text_w + 18.0;
+                let bubble_h = 22.0;
+                let bubble_x = (thumb_x - bubble_w / 2.0).clamp(left, right - bubble_w);
+                let bubble_y = track_y - 16.0 - bubble_h;
+                cr.set_source_rgb(ACCENT.0, ACCENT.1, ACCENT.2);
+                fan_rounded_rect(cr, bubble_x, bubble_y, bubble_w, bubble_h, 5.0);
+                let _ = cr.fill();
+                cr.set_source_rgb(0.05, 0.08, 0.05);
+                if let Ok(e) = cr.text_extents(&text) {
+                    cr.move_to(
+                        bubble_x + bubble_w / 2.0 - e.width() / 2.0 - e.x_bearing(),
+                        bubble_y + bubble_h / 2.0 - e.height() / 2.0 - e.y_bearing(),
+                    );
+                    let _ = cr.show_text(&text);
+                }
+            }
+
+            // End caps and their labels: an orange fan at LOW, a blue fan plus
+            // airflow waves at HIGH — matching Synapse.
+            let low_cx = 32.0;
+            let high_fan_cx = w - 48.0;
+            let high_waves_cx = w - 14.0;
+            let high_label_cx = (high_fan_cx + high_waves_cx) / 2.0;
+            fan_draw_turbine(cr, low_cx, track_y, 18.0, FAN_LOW, dim);
+            fan_draw_turbine(cr, high_fan_cx, track_y, 18.0, FAN_HIGH, dim);
+            fan_draw_waves(cr, high_waves_cx, track_y, dim);
+            cr.select_font_face(
+                "monospace",
+                gtk::cairo::FontSlant::Normal,
+                gtk::cairo::FontWeight::Normal,
+            );
+            cr.set_font_size(11.0);
+            cr.set_source_rgba(0.62, 0.68, 0.64, dim);
+            fan_draw_centered_text(cr, "LOW", low_cx, track_y + 32.0);
+            fan_draw_centered_text(cr, "HIGH", high_label_cx, track_y + 32.0);
+        }
+    ));
+
+    // Click-and-drag: jump on press, follow on drag.
+    let drag = gtk::GestureDrag::new();
+    let drag_origin = Rc::new(Cell::new(0.0));
+    drag.connect_drag_begin(clone!(
+        #[strong]
+        value,
+        #[strong]
+        enabled,
+        #[strong]
+        drag_origin,
+        #[weak]
+        area,
+        move |_, x, _| {
+            if !enabled.get() {
+                return;
+            }
+            drag_origin.set(x);
+            value.set(fan_value_from_x(x, area.width() as f64, min, max, step));
+            area.queue_draw();
+        }
+    ));
+    drag.connect_drag_update(clone!(
+        #[strong]
+        value,
+        #[strong]
+        enabled,
+        #[strong]
+        drag_origin,
+        #[weak]
+        area,
+        move |_, offset_x, _| {
+            if !enabled.get() {
+                return;
+            }
+            let x = drag_origin.get() + offset_x;
+            value.set(fan_value_from_x(x, area.width() as f64, min, max, step));
+            area.queue_draw();
+        }
+    ));
+    area.add_controller(drag);
+
+    // Keyboard: arrows nudge by one step, Home/End jump to the ends.
+    let keys = gtk::EventControllerKey::new();
+    keys.connect_key_pressed(clone!(
+        #[strong]
+        value,
+        #[strong]
+        enabled,
+        #[weak]
+        area,
+        #[upgrade_or]
+        glib::Propagation::Proceed,
+        move |_, key, _, _| {
+            if !enabled.get() {
+                return glib::Propagation::Proceed;
+            }
+            let current = value.get();
+            let next = match key {
+                gtk::gdk::Key::Left | gtk::gdk::Key::Down => current - step,
+                gtk::gdk::Key::Right | gtk::gdk::Key::Up => current + step,
+                gtk::gdk::Key::Home => min,
+                gtk::gdk::Key::End => max,
+                _ => return glib::Propagation::Proceed,
+            };
+            value.set(next.clamp(min, max));
+            area.queue_draw();
+            glib::Propagation::Stop
+        }
+    ));
+    area.add_controller(keys);
+
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    root.append(&section_label("MANUAL SPEED — RPM"));
+    root.append(&area);
+
+    FanSlider {
+        root: root.upcast(),
+        area,
+        value,
+        enabled,
+    }
 }
 
 fn labelled_scale(label: &str, scale: &gtk::Scale) -> gtk::Box {
