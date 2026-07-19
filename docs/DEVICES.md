@@ -27,7 +27,7 @@ treated as verified.
 | Check | Status |
 | --- | --- |
 | Socket activation via `razer-control.socket` | Pending |
-| Policy rejections over IPC (out-of-range fan, gpu-tdp without opt-in) | Pending |
+| Policy rejections over IPC (out-of-range fan, experimental profile without opt-in) | Pending |
 | Auto-fan failsafe logged on service stop | Pending |
 | Socket is 0600 under `XDG_RUNTIME_DIR`, nothing in `/tmp` | Pending |
 

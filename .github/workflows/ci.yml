@@ -60,4 +60,7 @@ jobs:
           grep -q '^Exec=razer-control-desktop$' /usr/share/applications/dev.cyph3rpunk.razer-control.desktop
           /usr/bin/razer-control device 1532 029d
           /usr/bin/razer-control validate fan manual 3000
-          ! /usr/bin/razer-control validate gpu-tdp 140
+          # An experimental op must be rejected without the opt-in flag and
+          # accepted with it — proving the gate, not just an unknown verb.
+          ! /usr/bin/razer-control validate profile gaming
+          /usr/bin/razer-control validate profile gaming --experimental
