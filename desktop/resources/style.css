@@ -49,8 +49,9 @@ headerbar {
  * and the header itself adds no start padding. */
 .page-title {
   font-family: monospace;
-  font-size: 12px;
+  font-size: 18px;
   letter-spacing: 4px;
+  margin-top: 12px;
   margin-left: 24px;
   color: #8a938c;
 }
@@ -117,6 +118,14 @@ headerbar {
   font-size: 11px;
   letter-spacing: 2px;
   color: #6f7873;
+}
+
+/* Laptop card caption — larger and white, unlike the muted gauge captions. */
+.laptop-caption {
+  font-family: monospace;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #ffffff;
 }
 .dash-value {
   font-family: monospace;
