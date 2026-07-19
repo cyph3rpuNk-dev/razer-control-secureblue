@@ -10,7 +10,7 @@ use adw::prelude::*;
 use gtk::glib;
 use gtk::glib::clone;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 const APP_ID: &str = "dev.cyph3rpunk.razer-control";
@@ -2295,24 +2295,16 @@ fn ddc_set(simulated: bool, feature: &str, value: &str) -> Result<String, String
     }
 }
 
-const SPARKLINE_CAPACITY: usize = 90;
 const GAUGE_MIN_C: f64 = 30.0;
 const GAUGE_MAX_C: f64 = 100.0;
 
-/// Fang-style dashboard: gauge, fan, and power cards over two side-by-side
-/// 90-second history charts and an active-profile bar, fed by the daemon's
-/// read-only `telemetry` request at 1 Hz.  Pure display — no control lives
-/// here.
+/// Fang-style dashboard: CPU/GPU gauges and a fan card above the hardware
+/// and system-status cards, fed by the daemon's read-only `telemetry`
+/// request at 1 Hz.  Pure display — no control lives here.
 fn dashboard_page() -> gtk::Widget {
     let cpu_value = Rc::new(Cell::new(None::<f64>));
     let gpu_value = Rc::new(Cell::new(None::<f64>));
     let fan_value = Rc::new(Cell::new(None::<f64>));
-    let cpu_history = Rc::new(RefCell::new(VecDeque::<f64>::with_capacity(
-        SPARKLINE_CAPACITY,
-    )));
-    let fan_history = Rc::new(RefCell::new(VecDeque::<f64>::with_capacity(
-        SPARKLINE_CAPACITY,
-    )));
 
     // Fang's top row: CPU PACKAGE and GPU CORE gauges, then the fan card.
     let (cpu_card, cpu_area, cpu_value_label, cpu_sub) =
@@ -2334,18 +2326,6 @@ fn dashboard_page() -> gtk::Widget {
     cards.append(&gpu_card);
     cards.append(&fan_card);
 
-    let (cpu_chart_card, cpu_chart_area, cpu_chart_value) =
-        build_sparkline_card("CPU TEMPERATURE — 90 S", Rc::clone(&cpu_history));
-    let (fan_chart_card, fan_chart_area, fan_chart_value) =
-        build_sparkline_card("FAN SPEED — 90 S", Rc::clone(&fan_history));
-    let charts = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(16)
-        .homogeneous(true)
-        .build();
-    charts.append(&cpu_chart_card);
-    charts.append(&fan_chart_card);
-
     // Static machine identity, read once (does not change while running).
     let sysinfo = request_sysinfo();
     let has_dgpu = sysinfo.get("gpu_dgpu").is_some_and(|value| value != "none");
@@ -2363,7 +2343,6 @@ fn dashboard_page() -> gtk::Widget {
         .margin_end(24)
         .build();
     page.append(&cards);
-    page.append(&charts);
     page.append(&hardware_card);
     page.append(&status_card);
 
@@ -2380,10 +2359,6 @@ fn dashboard_page() -> gtk::Widget {
         let cpu = field("cpu_temp");
         cpu_value.set(cpu);
         cpu_value_label.set_text(&cpu.map_or("—".to_owned(), |t| format!("{t:.0}")));
-        if let Some(temperature) = cpu {
-            push_sample(&cpu_history, temperature);
-            cpu_chart_value.set_text(&format!("{temperature:.0} °C"));
-        }
         // CPU sub-readout: utilisation · clock.
         let mut cpu_parts = Vec::new();
         if let Some(util) = field("cpu_util") {
@@ -2415,10 +2390,6 @@ fn dashboard_page() -> gtk::Widget {
         let fan = field("fan_rpm");
         fan_value.set(fan);
         fan_value_label.set_text(&fan.map_or("—".to_owned(), |rpm| format!("{rpm:.0}")));
-        if let Some(rpm) = fan {
-            push_sample(&fan_history, rpm);
-            fan_chart_value.set_text(&format!("{rpm:.0} rpm"));
-        }
 
         // Live memory row on the hardware card.
         if let (Some(used), Some(total)) = (field("mem_used"), field("mem_total"))
@@ -2437,8 +2408,6 @@ fn dashboard_page() -> gtk::Widget {
         update_status_labels(&status_labels, &status);
         cpu_area.queue_draw();
         gpu_area.queue_draw();
-        cpu_chart_area.queue_draw();
-        fan_chart_area.queue_draw();
         glib::ControlFlow::Continue
     });
 
@@ -2448,14 +2417,6 @@ fn dashboard_page() -> gtk::Widget {
         .child(&page)
         .build()
         .upcast()
-}
-
-fn push_sample(history: &Rc<RefCell<VecDeque<f64>>>, sample: f64) {
-    let mut samples = history.borrow_mut();
-    if samples.len() == SPARKLINE_CAPACITY {
-        samples.pop_front();
-    }
-    samples.push_back(sample);
 }
 
 /// One daemon request parsed into its `key=value` fields; empty on error.
@@ -2769,67 +2730,6 @@ fn build_fan_card(rpm: Rc<Cell<Option<f64>>>) -> (gtk::Box, gtk::Label) {
     card.append(&readout);
     card.append(&dash_label("FAN TARGET"));
     (card, value_label)
-}
-
-/// 90-sample line chart drawn with cairo; scales to the data's own range
-/// with a little headroom so idle temperatures do not flatline at the edge.
-fn build_sparkline_card(
-    caption: &str,
-    history: Rc<RefCell<VecDeque<f64>>>,
-) -> (gtk::Box, gtk::DrawingArea, gtk::Label) {
-    let area = gtk::DrawingArea::builder()
-        .content_height(90)
-        .hexpand(true)
-        .build();
-    area.set_draw_func(move |_, cr, width, height| {
-        let samples = history.borrow();
-        if samples.len() < 2 {
-            return;
-        }
-        let low = samples.iter().cloned().fold(f64::INFINITY, f64::min) - 2.0;
-        let high = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max) + 2.0;
-        let x_step = width as f64 / (SPARKLINE_CAPACITY - 1) as f64;
-        let project = |sample: f64| {
-            let normalised = (sample - low) / (high - low);
-            height as f64 - normalised * (height as f64 - 8.0) - 4.0
-        };
-        cr.set_source_rgba(ACCENT.0, ACCENT.1, ACCENT.2, 0.15);
-        cr.move_to(0.0, height as f64);
-        for (index, sample) in samples.iter().enumerate() {
-            cr.line_to(index as f64 * x_step, project(*sample));
-        }
-        cr.line_to((samples.len() - 1) as f64 * x_step, height as f64);
-        let _ = cr.fill();
-        cr.set_source_rgb(ACCENT.0, ACCENT.1, ACCENT.2);
-        cr.set_line_width(2.0);
-        for (index, sample) in samples.iter().enumerate() {
-            let x = index as f64 * x_step;
-            let y = project(*sample);
-            if index == 0 {
-                cr.move_to(x, y);
-            } else {
-                cr.line_to(x, y);
-            }
-        }
-        let _ = cr.stroke();
-    });
-
-    let caption_label = dash_label(caption);
-    caption_label.set_halign(gtk::Align::Start);
-    let value_label = gtk::Label::builder()
-        .label("—")
-        .halign(gtk::Align::End)
-        .hexpand(true)
-        .css_classes(["chart-value"])
-        .build();
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    header.append(&caption_label);
-    header.append(&value_label);
-
-    let card = fang_card(6);
-    card.append(&header);
-    card.append(&area);
-    (card, area, value_label)
 }
 
 fn value_scale(min: f64, max: f64, step: f64, initial: f64) -> gtk::Scale {
