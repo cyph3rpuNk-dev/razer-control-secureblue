@@ -84,10 +84,13 @@ case "$response" in
     *)    bad "fan manual 9000 was NOT rejected: ${response}" ;;
 esac
 
-response="$(run_ctl gpu-tdp 140)"
+# A real experimental verb (the daemon here runs without --experimental), so
+# rejection proves the opt-in gate — not merely that the verb is unknown.
+response="$(run_ctl profile gaming)"
 case "$response" in
-    err*) ok "experimental gpu-tdp correctly rejected without opt-in" ;;
-    *)    bad "gpu-tdp was NOT rejected: ${response}" ;;
+    err*experimental*) ok "experimental profile correctly rejected without opt-in" ;;
+    err*)              bad "profile gaming rejected, but not by the experimental gate: ${response}" ;;
+    *)                 bad "experimental profile was NOT rejected: ${response}" ;;
 esac
 
 # 5. Failsafe: daemon is in manual mode from step 4; stopping the service
