@@ -48,3 +48,12 @@ label.chip {
 label.chip.chip-accent  { background-color: alpha(@accent_bg_color,  0.15); color: @accent_color; }
 label.chip.chip-success { background-color: alpha(@success_bg_color, 0.15); color: @success_color; }
 label.chip.chip-warning { background-color: alpha(@warning_bg_color, 0.15); color: @warning_color; }
+
+/* The Fan-speed tile's spinning glyph.  Razer brand green — content, not
+ * theming, like the swatches above. */
+.fan-glyph { color: #44d62c; }
+
+/* Text inside the gauge dials, which paint a black face in both schemes
+ * (mirroring the AIO pump screens) — white for contrast, content like the
+ * dial itself. */
+.gauge-centre { color: #ffffff; }
