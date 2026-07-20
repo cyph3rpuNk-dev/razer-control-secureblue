@@ -133,10 +133,14 @@ GPU mode via supergfxctl/prime-select/envycontrol (pkexec where root is
 needed), panel backlight via logind, external monitors via ddcutil — and
 says which tool each row uses.
 
+<img src="packaging/icons/razer-control-desktop.svg" width="40" align="left"
+     alt="Tray icon: a laptop silhouette on a green disc">
+
 `razer-control-tray` is a StatusNotifierItem tray for KDE Plasma (ksni): a
 third thin client whose menu actions each send one IPC line — fan auto, a
 manual preset, charge limit, and launching the desktop app. Start it from the
-application menu or add it to Plasma autostart.
+application menu or add it to Plasma autostart; the icon shown here appears
+in the panel's system tray.
 
 ## Installation
 
