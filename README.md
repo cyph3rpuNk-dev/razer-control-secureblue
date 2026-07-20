@@ -76,7 +76,7 @@ razer-control ctl fan auto
 
 ## Control GUI
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Overview](docs/screenshots/overview.png)
 
 | Performance | Battery |
 | --- | --- |
@@ -86,26 +86,52 @@ razer-control ctl fan auto
 telemetry; no hardware commands are sent.*
 
 `razer-control-desktop` (in [desktop/](desktop/)) is a native
-GTK4/libadwaita app and a pure IPC client: every control sends one line of
-the daemon protocol, and all safety decisions stay in the daemon. It uses
-GTK4 rather than a webview because WebKitGTK — which Tauri mandates on Linux
-— sits badly on Secureblue's hardened runtime (its bwrap web-process sandbox
-breaks on atomic/hardened layouts and collides with hardened_malloc); the
-GUI that already works there, razer-control-revived, is GTK4/libadwaita too.
+GTK4/libadwaita app following the GNOME HIG — sidebar navigation, stock
+Adwaita widgets, the system light/dark scheme and fonts — and a pure IPC
+client: every control sends one line of the daemon protocol, and all safety
+decisions stay in the daemon. The daemon's reply to each request is shown as
+a toast, so a policy rejection is visible the moment it happens, and the
+Diagnostics page keeps a copyable log of recent requests and replies. It
+uses GTK4 rather than a webview because WebKitGTK — which Tauri mandates on
+Linux — sits badly on Secureblue's hardened runtime (its bwrap web-process
+sandbox breaks on atomic/hardened layouts and collides with
+hardened_malloc); the GUI that already works there, razer-control-revived,
+is GTK4/libadwaita too.
 
 GTK4/libadwaita are Linux-only, so the crate builds the real UI only on
 Linux and is a stub elsewhere — core and daemon work still develop on
-Windows, but the GUI runs on the Linux/Secureblue side. It talks to the real
-per-user socket by default; `RAZER_CONTROL_MOCK=1` swaps the transport for an
-in-process copy of the identical daemon core with the dry-run backend:
+Windows, but the GUI runs on the Linux/Secureblue side.
+
+### Run the desktop UI
+
+Against a mock daemon — no daemon, socket, or hardware needed.
+`RAZER_CONTROL_MOCK=1` swaps the transport for an in-process copy of the
+identical daemon core with the dry-run backend and simulated telemetry
+(the app shows a "Simulated session" banner):
 
 ```bash
 RAZER_CONTROL_MOCK=1 cargo run -p razer-control-desktop
+# In WSLg or other software-rendered environments, add: GSK_RENDERER=cairo
 ```
 
-The app holds no policy. Beyond forwarding IPC lines it reads the power
-source for display only; privileged desktop integration (refresh-rate
-switching, KDE settings) remains a tracked follow-up.
+Against the real daemon — enable the per-user socket first (see "Test it on
+a Linux session" above), then run without the mock variable:
+
+```bash
+cargo run -p razer-control-desktop
+```
+
+If the daemon is unreachable the app says so in a banner and disables the
+daemon-backed pages; with the default dry-run backend a second banner
+reminds you that requests are validated and logged but never written to
+hardware. Experimental controls (profiles, lighting, logo) stay locked
+until the daemon runs with `--experimental`.
+
+The app holds no policy. The Display & GPU page drives desktop tooling
+directly rather than the daemon — refresh rates via kscreen-doctor (KDE),
+GPU mode via supergfxctl/prime-select/envycontrol (pkexec where root is
+needed), panel backlight via logind, external monitors via ddcutil — and
+says which tool each row uses.
 
 `razer-control-tray` is a StatusNotifierItem tray for KDE Plasma (ksni): a
 third thin client whose menu actions each send one IPC line — fan auto, a

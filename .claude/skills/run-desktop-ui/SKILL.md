@@ -26,6 +26,8 @@ that command line:
   where WSLg's Weston compositor supports neither `grim` nor
   wlr-screencopy — you can launch but not screenshot.
 
+To check dark mode, add `ADW_DEBUG_COLOR_SCHEME=prefer-dark`.
+
 Expect a wall of `Vulkan`/`libEGL`/`ZINK` warnings at startup. They are
 WSLg falling back to software rendering and are **benign** — do not
 debug them. The app has launched when
@@ -39,31 +41,37 @@ One-time setup (already done if `import` and `xdotool` resolve):
 sudo dnf install -y ImageMagick xdotool
 ```
 
-Find the window and screenshot it:
+Find the **main** window — `xdotool search --class razer` also matches
+1x1 helper windows and menu popovers, so pick the one whose geometry is
+the app's 920x700 default:
 
 ```bash
-WID=$(xdotool search --onlyvisible --class razer | head -1)
+WID=$(for wid in $(xdotool search --class razer); do
+  xdotool getwindowgeometry "$wid" 2>/dev/null | grep -q "920x700" && echo "$wid"
+done | head -1)
 import -display :0 -window "$WID" /path/to/shot.png
 ```
 
 **Look at the screenshot** — a blank frame means the launch failed.
-The Dashboard should show the Blade 14 device card (`1532:029d`), two
-temperature gauges, and a fan RPM tile; values change between captures
-because the mock telemetry is live.
+The Overview page should show the Blade 14 device card (`1532:029d`), a
+Telemetry group (CPU/GPU/Fan/Memory rows), and a "Simulated session"
+banner; values change between captures because the mock telemetry is live.
 
-To click (e.g. sidebar navigation), convert window-relative coords to
-absolute using `xdotool getwindowgeometry "$WID"` (Position + offset).
-A bare `mousemove … click` can silently miss; the reliable sequence is:
+To click (e.g. sidebar navigation), **re-read the window position first**
+— WSLg moves windows between activations, so cached coordinates go stale:
 
 ```bash
+eval $(xdotool getwindowgeometry --shell "$WID" | grep -E '^(X|Y)=')
 xdotool windowactivate --sync "$WID"   # prints a XGetWindowProperty warning — ignore it
-xdotool mousemove --sync $((WIN_X+88)) $((WIN_Y+121))   # e.g. "Performance" nav item
+xdotool mousemove --sync $((X+115)) $((Y+107))   # e.g. "Performance" nav item
 xdotool click 1
 ```
 
-Sidebar items at the default 1280x800 size sit at window-relative
-x≈88, y≈83 (Dashboard), 121 (Performance), 159 (Display & GPU),
-197 (Battery), 235 (Lighting).
+Sidebar rows at the default 920x700 size sit at window-relative x≈115,
+y≈69 (Overview), 107 (Performance), 145 (Cooling), 183 (Battery),
+221 (Lighting), 259 (Automation), 297 (Display & GPU), 335 (Diagnostics).
+Toasts appear bottom-centre; the Diagnostics page's request log is the
+quickest way to confirm a control actually sent its IPC line.
 
 ## Cleanup
 
