@@ -1,10 +1,11 @@
 //! Automation: the daemon-side fan rules applied when the power source
 //! changes.  Rules persist across daemon restarts; the row for the source
-//! that is active right now carries an "Active now" tag.
+//! that is active right now carries an "Active now" tag.  Shown as a group
+//! on the Performance page.
 
 use super::FAN_MIN_RPM;
-use crate::app::client;
 use crate::app::poll::{Poller, Snapshot};
+use crate::app::{client, ui};
 use adw::prelude::*;
 use gtk::glib;
 use gtk::glib::clone;
@@ -12,7 +13,11 @@ use std::rc::Rc;
 
 const CHOICES: [&str; 3] = ["Do nothing", "Automatic fan", "Quiet (2000 RPM)"];
 
-pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay, poller: &Rc<Poller>) -> gtk::Widget {
+pub fn group(
+    seed: &Snapshot,
+    overlay: &adw::ToastOverlay,
+    poller: &Rc<Poller>,
+) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
         .title("Fan rules")
         .description(
@@ -39,11 +44,8 @@ pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay, poller: &Rc<Poller>) -
             .model(&gtk::StringList::new(&CHOICES))
             .selected(initial)
             .build();
-        let tag = gtk::Label::builder()
-            .label("Active now")
-            .css_classes(["accent", "caption"])
-            .visible(false)
-            .build();
+        let tag = ui::chip("Active now", ui::ChipKind::Accent);
+        tag.set_visible(false);
         row.add_suffix(&tag);
         row.connect_selected_notify(clone!(
             #[weak]
@@ -69,7 +71,5 @@ pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay, poller: &Rc<Poller>) -
         }
     });
 
-    let page = adw::PreferencesPage::new();
-    page.add(&group);
-    page.upcast()
+    group
 }
