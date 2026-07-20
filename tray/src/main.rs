@@ -23,6 +23,27 @@ mod unix {
         last_response: String,
     }
 
+    /// "device name — backend" from a `status` reply's key=value fields.
+    fn describe_status(reply: &str) -> String {
+        let field = |key: &str| {
+            reply
+                .split_whitespace()
+                .find_map(|token| token.strip_prefix(key)?.strip_prefix('='))
+        };
+        let device = match field("device") {
+            Some("1532:029d") => razer_control_secureblue::BLADE_14_2023.name,
+            Some(other) => other,
+            None => "Unknown device",
+        };
+        let backend = match field("backend") {
+            Some("dry-run") => "dry-run backend",
+            Some("hidraw") => "hardware backend (hidraw)",
+            Some(other) => other,
+            None => "unknown backend",
+        };
+        format!("{device} — {backend}")
+    }
+
     impl RazerTray {
         fn request(&mut self, line: &str) {
             self.last_response = match send(line) {
@@ -50,7 +71,12 @@ mod unix {
             ksni::ToolTip {
                 title: "Razer Control".into(),
                 description: if self.last_response.is_empty() {
-                    "Razer Blade 14 (2023) — dry-run".into()
+                    // No action taken yet: describe the live daemon instead
+                    // of assuming a device or backend.
+                    match send("status") {
+                        Ok(reply) => describe_status(&reply),
+                        Err(_) => "Daemon not reachable".into(),
+                    }
                 } else {
                     self.last_response.clone()
                 },
