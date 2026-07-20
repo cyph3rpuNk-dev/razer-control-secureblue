@@ -26,7 +26,8 @@ that command line:
   where WSLg's Weston compositor supports neither `grim` nor
   wlr-screencopy — you can launch but not screenshot.
 
-To check dark mode, add `ADW_DEBUG_COLOR_SCHEME=prefer-dark`.
+The app forces a dark scheme at startup (Synapse-style), so it looks the
+same whatever the system theme; there is no light variant to check.
 
 Expect a wall of `Vulkan`/`libEGL`/`ZINK` warnings at startup. They are
 WSLg falling back to software rendering and are **benign** — do not
@@ -53,24 +54,39 @@ import -display :0 -window "$WID" /path/to/shot.png
 ```
 
 **Look at the screenshot** — a blank frame means the launch failed.
-The Overview page should show the Blade 14 device card (`1532:029d`), a
-Telemetry group (CPU/GPU/Fan/Memory rows), and a "Simulated session"
+The Overview page should show the hero card (Blade 14 portrait, status
+chips), a stat-tile grid, a Telemetry group, and a "Simulated session"
 banner; values change between captures because the mock telemetry is live.
 
-To click (e.g. sidebar navigation), **re-read the window position first**
-— WSLg moves windows between activations, so cached coordinates go stale:
+Navigation is five view-switcher pills in the header bar (Overview,
+Performance, Display, Battery, Lighting). To click one, **re-read the
+window geometry first** — WSLg moves and resizes windows between
+activations, so cached coordinates go stale — and compute the pill's x
+as a fraction of the window width (the switcher is centred):
 
 ```bash
-eval $(xdotool getwindowgeometry --shell "$WID" | grep -E '^(X|Y)=')
+eval $(xdotool getwindowgeometry --shell "$WID" | grep -E '^(X|Y|WIDTH)=')
 xdotool windowactivate --sync "$WID"   # prints a XGetWindowProperty warning — ignore it
-xdotool mousemove --sync $((X+115)) $((Y+107))   # e.g. "Performance" nav item
+xdotool mousemove --sync $((X + WIDTH*31/100)) $((Y+20))   # "Performance" pill
 xdotool click 1
 ```
 
-Sidebar rows at the default 920x700 size sit at window-relative x≈115,
-y≈69 (Overview), 107 (Performance), 145 (Cooling), 183 (Battery),
-221 (Lighting), 259 (Automation), 297 (Display & GPU), 335 (Diagnostics).
-Toasts appear bottom-centre; the Diagnostics page's request log is the
+Pill centres at window-relative y≈20: x/WIDTH ≈ 0.16 (Overview),
+0.31 (Performance), 0.46 (Display), 0.60 (Battery), 0.75 (Lighting).
+Below 620 px wide, the switcher moves to a bottom bar instead.
+
+Diagnostics is a separate window behind the header menu. Clicking into
+the menu popover is unreliable under WSLg (it is its own X window that
+toggles closed easily); activate the action over D-Bus instead, then
+capture the new 640x560 "Diagnostics" window:
+
+```bash
+gdbus call --session --dest dev.cyph3rpunk.razer-control \
+  --object-path /dev/cyph3rpunk/razer_control \
+  --method org.gtk.Actions.Activate diagnostics "[]" "{}"
+```
+
+Toasts appear bottom-centre; the Diagnostics window's request log is the
 quickest way to confirm a control actually sent its IPC line.
 
 ## Cleanup
