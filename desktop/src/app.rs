@@ -1,13 +1,14 @@
 //! GTK4/libadwaita UI shell.  Linux-only; see `main.rs` for the platform
 //! gate.
 //!
-//! The app follows the GNOME HIG: five top-level views in an `AdwViewStack`
-//! switched from the header bar (Synapse-style), pages built from stock
-//! libadwaita widgets, the system light/dark scheme and fonts, and global
-//! banners for the two states a user must never mistake — the daemon being
-//! unreachable, and a backend that does not write to hardware.  Diagnostics
-//! lives in the primary menu as its own window.  Every control is a thin
-//! IPC client; policy lives in the daemon.
+//! The app follows the GNOME HIG with a Synapse flavour: five top-level
+//! views in an `AdwViewStack` switched from the header bar, pages built
+//! from stock libadwaita widgets, system fonts, a forced dark scheme
+//! (Synapse is always dark), and global banners for the two states a user
+//! must never mistake — the daemon being unreachable, and a backend that
+//! does not write to hardware.  Diagnostics lives in the primary menu as
+//! its own window.  Every control is a thin IPC client; policy lives in
+//! the daemon.
 
 mod client;
 mod pages;
@@ -25,7 +26,13 @@ const REPOSITORY_URL: &str = "https://github.com/cyph3rpuNk-dev/razer-control-se
 
 pub fn run() -> std::process::ExitCode {
     let app = adw::Application::builder().application_id(APP_ID).build();
-    app.connect_startup(|_| load_css());
+    app.connect_startup(|_| {
+        // Synapse-style: the app is always dark, whatever the system
+        // scheme.  Named colors resolve to their dark variants, so the
+        // accent-derived styling needs no special-casing.
+        adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+        load_css();
+    });
     app.connect_activate(build_ui);
     let status = app.run();
     std::process::ExitCode::from(if status == glib::ExitCode::SUCCESS {

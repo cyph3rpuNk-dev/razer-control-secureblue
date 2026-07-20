@@ -1,8 +1,10 @@
-/* The app uses stock Adwaita styling, the system color scheme, and system
- * fonts.  All custom CSS below derives from Adwaita named colors (accent,
- * success, warning) so it follows the system accent and light/dark scheme —
- * no hardcoded theming.  The one exception is the Lighting color-preset
- * swatches, whose backgrounds are content (the six keyboard colors). */
+/* The app uses stock Adwaita styling and system fonts, with the scheme
+ * forced dark at startup (Synapse-style; see app.rs).  All custom CSS
+ * below derives from Adwaita named colors (accent, success, warning) so
+ * it follows the system accent — no hardcoded theming.  The exceptions
+ * are content, not theming: the Lighting color-preset swatches (the six
+ * keyboard colors), the Razer-green fan glyph, and the black gauge
+ * faces. */
 
 button.swatch {
   min-width: 24px;
