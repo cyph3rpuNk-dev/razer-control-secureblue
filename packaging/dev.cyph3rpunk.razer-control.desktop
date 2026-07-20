@@ -6,5 +6,6 @@ Exec=razer-control-desktop
 Icon=razer-control-desktop
 Terminal=false
 Type=Application
+StartupWMClass=razer-control-desktop
 Categories=System;Settings;HardwareSettings;
 Keywords=razer;blade;fan;battery;charge;
