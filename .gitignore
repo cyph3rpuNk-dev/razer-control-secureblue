@@ -1,2 +1,6 @@
 /target
-/.claude/
+# Keep Claude workspace local, except skills we choose to share
+/.claude/*
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/run-desktop-ui/
