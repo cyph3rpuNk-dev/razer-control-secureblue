@@ -11,7 +11,6 @@ path = "src/main.rs"
 
 [dependencies]
 razer-control-secureblue = { path = ".." }
-starship-battery = "0.10"
 
 # GTK4 + libadwaita are Linux-only. Gating the deps by target keeps the crate
 # building as a stub on the maintainer's Windows box (mirroring the tray), so a

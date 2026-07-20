@@ -202,6 +202,12 @@ fn serve_connection<B: Backend>(
     Ok(())
 }
 
+/// The socket path a client would connect to, for display in diagnostics.
+/// Does not touch the filesystem.
+pub fn client_socket_path() -> Result<PathBuf, String> {
+    Ok(private_runtime_directory()?.join(SOCKET_FILE))
+}
+
 /// Send one request line to a running (or socket-activated) daemon and
 /// return its response line.
 pub fn send(command: &str) -> Result<String, String> {
