@@ -1,12 +1,14 @@
 //! GTK4/libadwaita UI shell.  Linux-only; see `main.rs` for the platform
 //! gate.
 //!
-//! The app follows the GNOME HIG: an `AdwNavigationSplitView` with a sidebar
-//! of pages built from stock libadwaita widgets, the system light/dark
-//! scheme and fonts, and global banners for the two states a user must
-//! never mistake — the daemon being unreachable, and a backend that does
-//! not write to hardware.  Every control is a thin IPC client; policy lives
-//! in the daemon.
+//! The app follows the GNOME HIG with a Synapse flavour: five top-level
+//! views in an `AdwViewStack` switched from the header bar, pages built
+//! from stock libadwaita widgets, system fonts, a forced dark scheme
+//! (Synapse is always dark), and global banners for the two states a user
+//! must never mistake — the daemon being unreachable, and a backend that
+//! does not write to hardware.  Diagnostics lives in the primary menu as
+//! its own window.  Every control is a thin IPC client; policy lives in
+//! the daemon.
 
 mod client;
 mod pages;
@@ -24,7 +26,13 @@ const REPOSITORY_URL: &str = "https://github.com/cyph3rpuNk-dev/razer-control-se
 
 pub fn run() -> std::process::ExitCode {
     let app = adw::Application::builder().application_id(APP_ID).build();
-    app.connect_startup(|_| load_css());
+    app.connect_startup(|_| {
+        // Synapse-style: the app is always dark, whatever the system
+        // scheme.  Named colors resolve to their dark variants, so the
+        // accent-derived styling needs no special-casing.
+        adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark);
+        load_css();
+    });
     app.connect_activate(build_ui);
     let status = app.run();
     std::process::ExitCode::from(if status == glib::ExitCode::SUCCESS {
@@ -64,54 +72,41 @@ fn build_ui(app: &adw::Application) {
     let seed = Snapshot::fetch_blocking();
     let poller = Poller::new();
 
-    // Pages that drive the daemon are disabled while it is unreachable;
-    // Overview, Display & GPU, and Diagnostics stay usable.
-    let stack = gtk::Stack::builder()
-        .transition_type(gtk::StackTransitionType::Crossfade)
-        .build();
-    let daemon_pages = [
-        stack.add_titled(
-            &pages::performance::page(&seed, &toast_overlay),
-            Some("performance"),
-            "Performance",
-        ),
-        stack.add_titled(
-            &pages::cooling::page(&seed, &toast_overlay, &poller),
-            Some("cooling"),
-            "Cooling",
-        ),
-        stack.add_titled(
-            &pages::battery::page(&seed, &toast_overlay),
-            Some("battery"),
-            "Battery",
-        ),
-        stack.add_titled(
-            &pages::lighting::page(&seed, &toast_overlay, &poller),
-            Some("lighting"),
-            "Lighting",
-        ),
-        stack.add_titled(
-            &pages::automation::page(&seed, &toast_overlay, &poller),
-            Some("automation"),
-            "Automation",
-        ),
-    ]
-    .map(|page| page.child());
-    stack.add_titled(
+    // Five top-level views, Synapse-style.  Pages that drive the daemon are
+    // disabled while it is unreachable; Overview, Display, and the
+    // Diagnostics window stay usable.
+    let stack = adw::ViewStack::new();
+    stack.add_titled_with_icon(
         &pages::overview::page(&poller),
         Some("overview"),
         "Overview",
+        "go-home-symbolic",
     );
-    stack.add_titled(
+    let performance_page = stack.add_titled_with_icon(
+        &pages::performance::page(&seed, &toast_overlay, &poller),
+        Some("performance"),
+        "Performance",
+        "power-profile-performance-symbolic",
+    );
+    stack.add_titled_with_icon(
         &pages::display::page(&toast_overlay, &poller),
         Some("display"),
-        "Display & GPU",
+        "Display",
+        "video-display-symbolic",
     );
-    stack.add_titled(
-        &pages::diagnostics::page(&poller),
-        Some("diagnostics"),
-        "Diagnostics",
+    let battery_page = stack.add_titled_with_icon(
+        &pages::battery::page(&seed, &toast_overlay),
+        Some("battery"),
+        "Battery",
+        "battery-good-symbolic",
     );
+    let lighting_page = stack.add_titled_with_icon(
+        &pages::lighting::page(&seed, &toast_overlay, &poller),
+        Some("lighting"),
+        "Lighting",
+        "input-keyboard-symbolic",
+    );
+    let daemon_pages = [performance_page, battery_page, lighting_page].map(|page| page.child());
 
     // Global state banners, above whichever page is visible.
     let unreachable_banner = adw::Banner::builder()
@@ -155,97 +150,31 @@ fn build_ui(app: &adw::Application) {
         }
     ));
 
-    // Sidebar: one row per page, HIG navigation-sidebar styling.
-    let sidebar_entries: [(&str, &str, &str); 8] = [
-        ("overview", "Overview", "go-home-symbolic"),
-        (
-            "performance",
-            "Performance",
-            "power-profile-performance-symbolic",
-        ),
-        ("cooling", "Cooling", "weather-windy-symbolic"),
-        ("battery", "Battery", "battery-good-symbolic"),
-        ("lighting", "Lighting", "input-keyboard-symbolic"),
-        ("automation", "Automation", "system-run-symbolic"),
-        ("display", "Display & GPU", "video-display-symbolic"),
-        ("diagnostics", "Diagnostics", "utilities-terminal-symbolic"),
-    ];
-    let sidebar_list = gtk::ListBox::builder()
-        .css_classes(["navigation-sidebar"])
+    // Header bar: the view switcher as the title widget (Bazaar/Synapse
+    // style), the primary menu on the right.
+    let switcher = adw::ViewSwitcher::builder()
+        .stack(&stack)
+        .policy(adw::ViewSwitcherPolicy::Wide)
         .build();
-    for (_, title, icon) in sidebar_entries {
-        let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        row_box.set_margin_top(8);
-        row_box.set_margin_bottom(8);
-        row_box.set_margin_start(6);
-        row_box.append(&gtk::Image::from_icon_name(icon));
-        row_box.append(&gtk::Label::new(Some(title)));
-        sidebar_list.append(&gtk::ListBoxRow::builder().child(&row_box).build());
-    }
-    sidebar_list.select_row(sidebar_list.row_at_index(0).as_ref());
-    stack.set_visible_child_name(sidebar_entries[0].0);
-
-    let sidebar_header = adw::HeaderBar::new();
-    let sidebar_toolbar = adw::ToolbarView::new();
-    sidebar_toolbar.add_top_bar(&sidebar_header);
-    sidebar_toolbar.set_content(Some(&sidebar_list));
-
-    // Content header: current page title plus the primary menu.
-    let window_title = adw::WindowTitle::new(sidebar_entries[0].1, "");
-    let content_header = adw::HeaderBar::builder()
-        .title_widget(&window_title)
-        .build();
+    let header = adw::HeaderBar::builder().title_widget(&switcher).build();
     let menu = gtk::gio::Menu::new();
+    menu.append(Some("Diagnostics"), Some("app.diagnostics"));
     menu.append(Some("About Razer Control"), Some("app.about"));
     let menu_button = gtk::MenuButton::builder()
         .icon_name("open-menu-symbolic")
         .menu_model(&menu)
         .tooltip_text("Main menu")
         .build();
-    content_header.pack_end(&menu_button);
+    header.pack_end(&menu_button);
 
-    let content_toolbar = adw::ToolbarView::new();
-    content_toolbar.add_top_bar(&content_header);
-    content_toolbar.set_content(Some(&toast_overlay));
+    // On narrow windows the switcher moves to a bottom bar; the breakpoint
+    // below swaps the header title and reveals it.
+    let switcher_bar = adw::ViewSwitcherBar::builder().stack(&stack).build();
 
-    let split = adw::NavigationSplitView::builder()
-        .sidebar(
-            &adw::NavigationPage::builder()
-                .title("Razer Control")
-                .child(&sidebar_toolbar)
-                .build(),
-        )
-        .content(
-            &adw::NavigationPage::builder()
-                .title("Razer Control")
-                .child(&content_toolbar)
-                .build(),
-        )
-        .min_sidebar_width(180.0)
-        .max_sidebar_width(240.0)
-        .build();
-
-    // Row selection switches the page; when the split view is collapsed
-    // (narrow window) it must also push the content pane into view.
-    sidebar_list.connect_row_selected(clone!(
-        #[weak]
-        stack,
-        #[weak]
-        split,
-        #[weak]
-        window_title,
-        move |_, row| {
-            if let Some(row) = row
-                && let Some((name, title, _)) = sidebar_entries.get(row.index() as usize)
-            {
-                stack.set_visible_child_name(name);
-                window_title.set_title(title);
-                if split.is_collapsed() {
-                    split.set_show_content(true);
-                }
-            }
-        }
-    ));
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&header);
+    toolbar.set_content(Some(&toast_overlay));
+    toolbar.add_bottom_bar(&switcher_bar);
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -253,18 +182,35 @@ fn build_ui(app: &adw::Application) {
         .icon_name("razer-control-desktop")
         .default_width(920)
         .default_height(700)
-        .content(&split)
+        .content(&toolbar)
         .build();
 
-    // Keep the window freely resizable: below 620 px the sidebar collapses
-    // into an overlay instead of forcing a large minimum width.
+    // Keep the window freely resizable: below 620 px the five header pills
+    // no longer fit, so the switcher drops to the bottom bar and the header
+    // shows the plain app title.
+    let narrow_title = adw::WindowTitle::new("Razer Control", "");
     let narrow = adw::Breakpoint::new(adw::BreakpointCondition::new_length(
         adw::BreakpointConditionLengthType::MaxWidth,
         620.0,
         adw::LengthUnit::Px,
     ));
-    narrow.add_setter(&split, "collapsed", Some(&true.to_value()));
+    narrow.add_setter(&header, "title-widget", Some(&narrow_title.to_value()));
+    narrow.add_setter(&switcher_bar, "reveal", Some(&true.to_value()));
     window.add_breakpoint(narrow);
+
+    // Diagnostics: secondary tooling, one hide-on-close window behind the
+    // primary menu so its poller subscription is created exactly once.
+    let diagnostics_toolbar = adw::ToolbarView::new();
+    diagnostics_toolbar.add_top_bar(&adw::HeaderBar::new());
+    diagnostics_toolbar.set_content(Some(&pages::diagnostics::page(&poller)));
+    let diagnostics_window = adw::Window::builder()
+        .title("Diagnostics")
+        .default_width(640)
+        .default_height(560)
+        .hide_on_close(true)
+        .content(&diagnostics_toolbar)
+        .build();
+    diagnostics_window.set_transient_for(Some(&window));
 
     let about = gtk::gio::ActionEntry::builder("about")
         .activate(clone!(
@@ -273,7 +219,14 @@ fn build_ui(app: &adw::Application) {
             move |_: &adw::Application, _, _| show_about(&window)
         ))
         .build();
-    app.add_action_entries([about]);
+    let diagnostics = gtk::gio::ActionEntry::builder("diagnostics")
+        .activate(clone!(
+            #[weak]
+            diagnostics_window,
+            move |_: &adw::Application, _, _| diagnostics_window.present()
+        ))
+        .build();
+    app.add_action_entries([about, diagnostics]);
 
     window.present();
 

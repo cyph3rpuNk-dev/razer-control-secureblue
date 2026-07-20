@@ -1,6 +1,8 @@
-//! One module per sidebar page.  Every page is a plain function returning a
-//! `gtk::Widget`; live data arrives through a [`super::poll::Poller`]
-//! subscription, actions leave through [`super::client::send`].
+//! One module per view (plus the cooling/automation groups embedded in the
+//! Performance page and the Diagnostics window).  Every page is a plain
+//! function returning a widget; live data arrives through a
+//! [`super::poll::Poller`] subscription, actions leave through
+//! [`super::client::send`].
 
 pub mod automation;
 pub mod battery;

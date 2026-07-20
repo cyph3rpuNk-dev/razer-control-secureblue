@@ -1,15 +1,15 @@
 //! Cooling: automatic vs. manual fan speed.  Instant apply with a debounce;
-//! the daemon's reply (the policy verdict) is toasted.
+//! the daemon's reply (the policy verdict) is toasted.  Shown as a group on
+//! the Performance page.
 
 use super::{FAN_DEFAULT_RPM, FAN_MAX_RPM, FAN_MIN_RPM};
-use crate::app::poll::{Poller, Snapshot};
+use crate::app::poll::Snapshot;
 use crate::app::{client, ui};
 use adw::prelude::*;
 use gtk::glib;
 use gtk::glib::clone;
-use std::rc::Rc;
 
-pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay, _poller: &Rc<Poller>) -> gtk::Widget {
+pub fn group(seed: &Snapshot, overlay: &adw::ToastOverlay) -> adw::PreferencesGroup {
     // Seed from the daemon: fan is "auto" or "manual:<rpm>".
     let seeded_rpm = seed
         .status
@@ -117,7 +117,5 @@ pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay, _poller: &Rc<Poller>) 
         }
     ));
 
-    let page = adw::PreferencesPage::new();
-    page.add(&group);
-    page.upcast()
+    group
 }

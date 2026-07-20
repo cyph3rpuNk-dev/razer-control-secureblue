@@ -1,16 +1,19 @@
-//! Performance: the overall power/acoustics profile, plus CPU and GPU power
-//! levels when the Custom profile is active.  Everything here is
-//! experimental-gated: the daemon rejects these without `--experimental`,
-//! and the UI locks them with an explanatory banner.
+//! Performance: the overall power/acoustics profile, CPU and GPU power
+//! levels when the Custom profile is active, plus the fan controls and
+//! power-source fan rules from the cooling/automation modules.  The profile
+//! groups are experimental-gated: the daemon rejects them without
+//! `--experimental`, and the UI locks them with an explanatory banner.  The
+//! fan groups are verified and always available.
 
-use super::EXPERIMENTAL_LOCKED;
-use crate::app::poll::Snapshot;
+use super::{EXPERIMENTAL_LOCKED, automation, cooling};
+use crate::app::poll::{Poller, Snapshot};
 use crate::app::{client, ui};
 use adw::prelude::*;
 use gtk::glib;
 use gtk::glib::clone;
 use razer_control_secureblue::ipc::parse_profile;
 use razer_control_secureblue::{BoostLevel, Profile};
+use std::rc::Rc;
 
 const PROFILES: [(&str, &str, &str); 4] = [
     ("Silent", "Lowest fan noise, capped power", "profile silent"),
@@ -28,7 +31,7 @@ const PROFILES: [(&str, &str, &str); 4] = [
 ];
 const LEVEL_TOKENS: [&str; 4] = ["low", "medium", "high", "boost"];
 
-pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay) -> gtk::Widget {
+pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay, poller: &Rc<Poller>) -> gtk::Widget {
     let experimental = seed.status_is("experimental", "true");
     let current = seed
         .status
@@ -144,6 +147,8 @@ pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay) -> gtk::Widget {
     let page = adw::PreferencesPage::new();
     page.add(&profile_group);
     page.add(&custom_group);
+    page.add(&cooling::group(seed, overlay));
+    page.add(&automation::group(seed, overlay, poller));
     page.set_vexpand(true);
 
     // Banner above the scrolled content, full width, HIG-style.
