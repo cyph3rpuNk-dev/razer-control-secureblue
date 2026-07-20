@@ -48,9 +48,13 @@ pub fn page(poller: &Rc<Poller>) -> gtk::Widget {
     socket_row.add_suffix(&copy_path);
     connection_group.add(&socket_row);
 
-    let (daemon_row, daemon_value) = ui::value_row("Daemon", None);
+    let daemon_row = adw::ActionRow::builder().title("Daemon").build();
+    let daemon_chip = ui::chip("—", ui::ChipKind::Neutral);
+    daemon_row.add_suffix(&daemon_chip);
     connection_group.add(&daemon_row);
-    let (backend_row, backend_value) = ui::value_row("Backend", None);
+    let backend_row = adw::ActionRow::builder().title("Backend").build();
+    let backend_chip = ui::chip("—", ui::ChipKind::Neutral);
+    backend_row.add_suffix(&backend_chip);
     connection_group.add(&backend_row);
 
     // Request log: monospace text view inside a card, newest at the bottom.
@@ -98,17 +102,22 @@ pub fn page(poller: &Rc<Poller>) -> gtk::Widget {
 
     // Refresh the connection rows and the log on every poll tick.
     poller.subscribe(move |snapshot| {
-        daemon_value.set_text(if snapshot.reachable {
-            "Reachable"
+        if snapshot.reachable {
+            ui::set_chip(&daemon_chip, "Reachable", ui::ChipKind::Success);
+            daemon_row.set_subtitle("");
         } else {
-            "Not reachable — enable with: systemctl --user enable --now razer-control.socket"
-        });
-        backend_value.set_text(match snapshot.status.get("backend").map(String::as_str) {
-            Some("dry-run") => "Dry run — no hardware writes",
-            Some("hidraw") => "Hardware (hidraw)",
-            Some(other) => other,
-            None => "—",
-        });
+            ui::set_chip(&daemon_chip, "Not reachable", ui::ChipKind::Warning);
+            daemon_row
+                .set_subtitle("Enable with: systemctl --user enable --now razer-control.socket");
+        }
+        match snapshot.status.get("backend").map(String::as_str) {
+            Some("dry-run") => ui::set_chip(&backend_chip, "Dry run", ui::ChipKind::Neutral),
+            Some("hidraw") => {
+                ui::set_chip(&backend_chip, "Hardware (hidraw)", ui::ChipKind::Success)
+            }
+            Some(other) => ui::set_chip(&backend_chip, other, ui::ChipKind::Neutral),
+            None => ui::set_chip(&backend_chip, "—", ui::ChipKind::Neutral),
+        }
 
         let entries = client::log_entries();
         let text = if entries.is_empty() {

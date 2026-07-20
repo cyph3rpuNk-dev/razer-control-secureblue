@@ -1,6 +1,8 @@
 //! Small builders shared by the pages.  Everything here composes stock
 //! GTK/libadwaita widgets with their built-in style classes (`dim-label`,
-//! `numeric`, `card`, …) — no custom fonts, no custom colors.
+//! `numeric`, `card`, …) plus the accent-derived classes documented in
+//! `resources/style.css` (`hero-card`, `stat-tile`, `chip`) — no custom
+//! fonts, no hardcoded colors.
 
 use adw::prelude::*;
 use gtk::glib;
@@ -90,6 +92,141 @@ pub fn debounce(
 /// Fresh debounce handle.
 pub fn debouncer() -> Rc<RefCell<Option<glib::SourceId>>> {
     Rc::new(RefCell::new(None))
+}
+
+/// The tint of a status chip, mapped to Adwaita's semantic colors.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ChipKind {
+    Neutral,
+    Accent,
+    Success,
+    Warning,
+}
+
+impl ChipKind {
+    fn class(self) -> Option<&'static str> {
+        match self {
+            Self::Neutral => None,
+            Self::Accent => Some("chip-accent"),
+            Self::Success => Some("chip-success"),
+            Self::Warning => Some("chip-warning"),
+        }
+    }
+}
+
+/// A pill "chip" label, tinted from the Adwaita named colors via the
+/// `chip` classes in style.css.  Update live with [`set_chip`].
+pub fn chip(text: &str, kind: ChipKind) -> gtk::Label {
+    let label = gtk::Label::builder()
+        .label(text)
+        .css_classes(["chip", "caption"])
+        .valign(gtk::Align::Center)
+        .build();
+    if let Some(class) = kind.class() {
+        label.add_css_class(class);
+    }
+    label
+}
+
+/// Retext and retint an existing chip.
+pub fn set_chip(label: &gtk::Label, text: &str, kind: ChipKind) {
+    label.set_text(text);
+    for class in ["chip-accent", "chip-success", "chip-warning"] {
+        label.remove_css_class(class);
+    }
+    if let Some(class) = kind.class() {
+        label.add_css_class(class);
+    }
+}
+
+/// The hero card returned by [`hero`]: append chips to `chips`, keep
+/// `subtitle` for live status text.
+pub struct Hero {
+    pub root: gtk::Widget,
+    pub subtitle: gtk::Label,
+    pub chips: gtk::Box,
+}
+
+/// A hero header card: big title, dim subtitle, and a chip row on the
+/// left; an optional caller-supplied widget (device portrait) trailing.
+/// The accent wash and padding come from the `hero-card` class.
+pub fn hero(title: &str, trailing: Option<&gtk::Widget>) -> Hero {
+    let root = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(24)
+        .css_classes(["card", "hero-card"])
+        .build();
+
+    let text_column = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .hexpand(true)
+        .valign(gtk::Align::Center)
+        .build();
+    let title = gtk::Label::builder()
+        .label(title)
+        .css_classes(["title-1"])
+        .halign(gtk::Align::Start)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
+    let subtitle = gtk::Label::builder()
+        .label("—")
+        .css_classes(["dim-label"])
+        .halign(gtk::Align::Start)
+        .build();
+    let chips = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(6)
+        .margin_top(6)
+        .build();
+    text_column.append(&title);
+    text_column.append(&subtitle);
+    text_column.append(&chips);
+    root.append(&text_column);
+
+    if let Some(widget) = trailing {
+        widget.set_halign(gtk::Align::End);
+        widget.set_valign(gtk::Align::Center);
+        root.append(widget);
+    }
+
+    Hero {
+        root: root.upcast(),
+        subtitle,
+        chips,
+    }
+}
+
+/// A tinted stat tile for an overview grid: caption title, prominent value
+/// the caller updates live, and an optional detail line that stays hidden
+/// until it is given text.  Returns `(tile, value, detail)`.
+pub fn stat_tile(title: &str) -> (gtk::Box, gtk::Label, gtk::Label) {
+    let tile = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(3)
+        .css_classes(["stat-tile"])
+        .build();
+    let title = gtk::Label::builder()
+        .label(title)
+        .css_classes(["caption", "dim-label"])
+        .halign(gtk::Align::Start)
+        .build();
+    let value = gtk::Label::builder()
+        .label("—")
+        .css_classes(["title-3", "numeric"])
+        .halign(gtk::Align::Start)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .build();
+    let detail = gtk::Label::builder()
+        .css_classes(["caption", "dim-label"])
+        .halign(gtk::Align::Start)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .visible(false)
+        .build();
+    tile.append(&title);
+    tile.append(&value);
+    tile.append(&detail);
+    (tile, value, detail)
 }
 
 /// Join non-empty parts with " · ", or "—" when there is nothing to show.
