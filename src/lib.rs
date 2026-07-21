@@ -92,8 +92,8 @@ impl BoostLevel {
     }
 }
 
-/// Performance profile.  Balanced and Gaming are the EC's own modes 0 and
-/// 1.  Silent and Custom are both EC mode 4 (custom) — Silent is the
+/// Performance profile.  Balanced and Gaming are the EC's own modes 0
+/// and 1.  Silent and Custom are both EC mode 4 (custom) — Silent is the
 /// fang-razer-linux preset of custom with both boosts pinned low, kept as
 /// a distinct variant so the UI and persistence can show the user's intent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

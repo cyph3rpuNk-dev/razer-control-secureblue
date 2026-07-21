@@ -20,6 +20,8 @@ jobs:
         run: cargo test --locked -p razer-control-secureblue --features hidraw-backend
       - name: Formatting
         run: cargo fmt --all --check
+      - name: Clippy (warnings = errors)
+        run: cargo clippy --workspace --all-targets --all-features -- -Dwarnings
 
   rpm:
     runs-on: ubuntu-latest

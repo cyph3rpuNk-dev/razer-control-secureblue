@@ -27,6 +27,10 @@ hidraw-backend = ["dep:hidapi"]
 [dependencies]
 hidapi = { version = "2", optional = true }
 
+# Unix-only daemon transport deps:
+#   listenfd    - accept the systemd socket-activation fd (LISTEN_FDS).
+#   signal-hook - async-signal-safe SIGTERM/SIGINT flag driving the
+#                 manual-fan -> auto failsafe on shutdown.
 [target.'cfg(unix)'.dependencies]
 listenfd = "1"
 signal-hook = "0.3"
