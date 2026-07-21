@@ -26,7 +26,7 @@ pub fn page(overlay: &adw::ToastOverlay, poller: &Rc<Poller>) -> gtk::Widget {
         page.add(&laptop_display_group(overlay, poller, name, modes));
     } else {
         let group = adw::PreferencesGroup::builder()
-            .title("Laptop display")
+            .title("LAPTOP DISPLAY")
             .description(
                 "No controllable display in this session: kscreen-doctor (KDE) is unavailable.",
             )
@@ -126,7 +126,7 @@ fn laptop_display_group(
         .unwrap_or_default();
 
     let group = adw::PreferencesGroup::builder()
-        .title("Laptop display")
+        .title("LAPTOP DISPLAY")
         .description("Applies instantly through kscreen-doctor (KDE).")
         .build();
 
@@ -218,7 +218,7 @@ fn gpu_mode_group(
     };
 
     let group = adw::PreferencesGroup::builder()
-        .title("GPU mode")
+        .title("GPU MODE")
         .description("A mode change applies after you log out or reboot.")
         .build();
 
@@ -292,7 +292,7 @@ fn gpu_mode_group(
 fn brightness_group(overlay: &adw::ToastOverlay) -> Option<adw::PreferencesGroup> {
     let (device, current, max) = system::backlight_device()?;
     let group = adw::PreferencesGroup::builder()
-        .title("Panel brightness")
+        .title("PANEL BRIGHTNESS")
         .description(
             "The built-in screen's backlight, set through logind — no privileges \
              needed.",
@@ -335,7 +335,7 @@ fn external_display_group(
     externals: &[&(String, Vec<system::DisplayMode>)],
 ) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
-        .title("External displays")
+        .title("EXTERNAL DISPLAYS")
         .description("Refresh rate applies instantly to the selected display.")
         .build();
     for (name, modes) in externals {
@@ -362,7 +362,7 @@ fn external_display_group(
 
 fn ddc_group(overlay: &adw::ToastOverlay) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
-        .title("External monitor (DDC/CI)")
+        .title("EXTERNAL MONITOR (DDC/CI)")
         .description("Brightness and color presets sent over DDC/CI via ddcutil.")
         .build();
 
@@ -411,7 +411,7 @@ fn ddc_group(overlay: &adw::ToastOverlay) -> adw::PreferencesGroup {
 
 fn color_group(overlay: &adw::ToastOverlay) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
-        .title("Color profile")
+        .title("COLOR PROFILE")
         .description("ICC profiles and calibration are managed by the desktop's color settings.")
         .build();
     let row = adw::ActionRow::builder()

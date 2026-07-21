@@ -52,7 +52,7 @@ pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay, poller: &Rc<Poller>) -
 
     // Profile selection as radio rows.
     let profile_group = adw::PreferencesGroup::builder()
-        .title("Performance mode")
+        .title("PERFORMANCE MODES")
         .description("Switches the EC's power and acoustics profile.")
         .build();
     let mut checks: Vec<gtk::CheckButton> = Vec::with_capacity(PROFILES.len());
@@ -64,7 +64,7 @@ pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay, poller: &Rc<Poller>) -
 
     // CPU/GPU power levels, active only on the Custom profile.
     let custom_group = adw::PreferencesGroup::builder()
-        .title("Custom power levels")
+        .title("CUSTOM POWER LEVELS")
         .description(
             "Higher levels raise sustained power and heat. Applied with the Custom \
              profile.",

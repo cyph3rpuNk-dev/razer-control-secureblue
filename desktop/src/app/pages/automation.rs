@@ -19,7 +19,7 @@ pub fn group(
     poller: &Rc<Poller>,
 ) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
-        .title("Fan rules")
+        .title("FAN RULES")
         .description(
             "Applied by the daemon whenever the power source changes; the quiet rule \
              pins the fans at the verified 2,000 RPM floor. Rules persist across restarts.",

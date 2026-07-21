@@ -10,7 +10,7 @@ use gtk::glib::clone;
 use std::rc::Rc;
 
 pub fn page(poller: &Rc<Poller>) -> gtk::Widget {
-    let connection_group = adw::PreferencesGroup::builder().title("Connection").build();
+    let connection_group = adw::PreferencesGroup::builder().title("CONNECTION").build();
 
     let (transport_row, transport_value) = ui::value_row("Transport", None);
     transport_value.set_text(if client::is_mock() {
@@ -59,7 +59,7 @@ pub fn page(poller: &Rc<Poller>) -> gtk::Widget {
 
     // Request log: monospace text view inside a card, newest at the bottom.
     let log_group = adw::PreferencesGroup::builder()
-        .title("Recent requests")
+        .title("RECENT REQUESTS")
         .description(
             "Every request this app sent and the daemon's reply. Replies starting \
              with \u{201c}err\u{201d} are policy rejections.",

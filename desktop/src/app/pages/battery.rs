@@ -20,7 +20,7 @@ pub fn page(seed: &Snapshot, overlay: &adw::ToastOverlay) -> gtk::Widget {
     };
 
     let group = adw::PreferencesGroup::builder()
-        .title("Battery Health Optimizer")
+        .title("BATTERY HEALTH OPTIMIZER")
         .description("Stops charging at the limit to protect long-term battery health.")
         .build();
 
