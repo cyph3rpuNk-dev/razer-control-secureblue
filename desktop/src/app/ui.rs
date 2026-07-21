@@ -197,10 +197,11 @@ pub fn hero(title: &str, trailing: Option<&gtk::Widget>) -> Hero {
     }
 }
 
-/// A tinted stat tile for an overview grid: caption title, prominent value
-/// the caller updates live, and an optional detail line that stays hidden
-/// until it is given text.  Returns `(tile, value, detail)`.
-pub fn stat_tile(title: &str) -> (gtk::Box, gtk::Label, gtk::Label) {
+/// A stat tile for an overview grid: title, then an accent-coloured icon
+/// and value on one line, and an optional detail line that stays hidden
+/// until it is given text.  Returns `(tile, icon, value, detail)`; the
+/// icon is returned so state tiles can swap it live.
+pub fn stat_tile(title: &str, icon_name: &str) -> (gtk::Box, gtk::Image, gtk::Label, gtk::Label) {
     let tile = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(3)
@@ -208,15 +209,25 @@ pub fn stat_tile(title: &str) -> (gtk::Box, gtk::Label, gtk::Label) {
         .build();
     let title = gtk::Label::builder()
         .label(title)
-        .css_classes(["caption", "dim-label"])
+        .css_classes(["dim-label"])
         .halign(gtk::Align::Start)
+        .build();
+    let icon = gtk::Image::builder()
+        .icon_name(icon_name)
+        .css_classes(["accent"])
         .build();
     let value = gtk::Label::builder()
         .label("—")
-        .css_classes(["title-3", "numeric"])
-        .halign(gtk::Align::Start)
+        .css_classes(["title-3", "numeric", "accent"])
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .build();
+    let reading = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::Start)
+        .build();
+    reading.append(&icon);
+    reading.append(&value);
     let detail = gtk::Label::builder()
         .css_classes(["caption", "dim-label"])
         .halign(gtk::Align::Start)
@@ -224,9 +235,9 @@ pub fn stat_tile(title: &str) -> (gtk::Box, gtk::Label, gtk::Label) {
         .visible(false)
         .build();
     tile.append(&title);
-    tile.append(&value);
+    tile.append(&reading);
     tile.append(&detail);
-    (tile, value, detail)
+    (tile, icon, value, detail)
 }
 
 /// Join non-empty parts with " · ", or "—" when there is nothing to show.
