@@ -44,11 +44,11 @@ sudo dnf install -y ImageMagick xdotool
 
 Find the **main** window — `xdotool search --class razer` also matches
 1x1 helper windows and menu popovers, so pick the one whose geometry is
-the app's 920x700 default:
+the app's 920x900 default:
 
 ```bash
 WID=$(for wid in $(xdotool search --class razer); do
-  xdotool getwindowgeometry "$wid" 2>/dev/null | grep -q "920x700" && echo "$wid"
+  xdotool getwindowgeometry "$wid" 2>/dev/null | grep -q "920x900" && echo "$wid"
 done | head -1)
 import -display :0 -window "$WID" /path/to/shot.png
 ```

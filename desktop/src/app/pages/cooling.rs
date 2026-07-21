@@ -22,7 +22,7 @@ pub fn group(seed: &Snapshot, overlay: &adw::ToastOverlay) -> adw::PreferencesGr
         .clamp(FAN_MIN_RPM, FAN_MAX_RPM);
 
     let group = adw::PreferencesGroup::builder()
-        .title("Fan")
+        .title("FAN SPEED")
         .description(
             "Manual control holds the fan at a fixed speed and reverts to automatic \
              when the daemon stops (logout or shutdown).",

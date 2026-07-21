@@ -181,7 +181,7 @@ fn build_ui(app: &adw::Application) {
         .title("Razer Control")
         .icon_name("razer-control-desktop")
         .default_width(920)
-        .default_height(700)
+        .default_height(900)
         .content(&toolbar)
         .build();
 
@@ -235,7 +235,7 @@ fn build_ui(app: &adw::Application) {
     // the surface is unmapped and WSLg drops the request).  Real desktops
     // never take this branch — they honor default_width/height directly.
     if std::env::var_os("WSL_DISTRO_NAME").is_some() {
-        window.set_default_size(920, 700);
+        window.set_default_size(920, 900);
     }
 
     poller.start(seed);

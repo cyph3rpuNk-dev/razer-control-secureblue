@@ -49,7 +49,7 @@ fn keyboard_group(
     experimental: bool,
 ) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
-        .title("Keyboard backlight")
+        .title("KEYBOARD BACKLIGHT")
         .description(
             "Brightness is remembered per power source and applied when you plug in \
              or unplug.",
@@ -216,7 +216,7 @@ fn logo_group(
     experimental: bool,
 ) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
-        .title("Lid logo")
+        .title("LID LOGO")
         .description("The snake on the lid: keep it lit, pulse it slowly, or turn it off.")
         .sensitive(experimental)
         .build();
@@ -247,7 +247,7 @@ fn logo_group(
 /// activity restores the active power source's brightness.
 fn idle_group(_seed: &Snapshot, _poller: &Rc<Poller>, experimental: bool) -> adw::PreferencesGroup {
     let group = adw::PreferencesGroup::builder()
-        .title("Turn off when idle")
+        .title("TURN OFF WHEN IDLE")
         .description(
             "Uses the desktop's idle timer (KDE). Lighting returns on activity at the \
              brightness set for the current power source.",

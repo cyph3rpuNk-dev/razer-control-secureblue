@@ -8,6 +8,8 @@ use crate::app::ui;
 use crate::app::{client, poll};
 use adw::prelude::*;
 use gtk::glib;
+use razer_control_secureblue::ipc::parse_profile;
+use razer_control_secureblue::{BoostLevel, Profile};
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::f64::consts::TAU;
@@ -59,7 +61,7 @@ pub fn page(poller: &Rc<Poller>) -> gtk::Widget {
     fan_card.append(&glyph);
     let fan_value = gtk::Label::builder()
         .label("—")
-        .css_classes(["caption", "dim-label", "numeric"])
+        .css_classes(["accent", "numeric"])
         .build();
     fan_card.append(&fan_value);
 
@@ -71,35 +73,37 @@ pub fn page(poller: &Rc<Poller>) -> gtk::Widget {
             child.set_focusable(false);
         }
     }
-    content.append(&gauges);
+    content.append(&section("MONITORING", &gauges));
 
-    // Stat tiles: the at-a-glance state.
+    // Stat tiles: the at-a-glance state, two wide tiles per row.
     let grid = gtk::FlowBox::builder()
         .selection_mode(gtk::SelectionMode::None)
         .homogeneous(true)
         .min_children_per_line(2)
-        .max_children_per_line(4)
+        .max_children_per_line(2)
         .row_spacing(12)
         .column_spacing(12)
         .build();
-    let (power_tile, power_value, _) = ui::stat_tile("Power source");
-    let (profile_tile, profile_value, _) = ui::stat_tile("Profile");
-    let (backend_tile, backend_value, _) = ui::stat_tile("Backend");
-    let (memory_tile, memory_value, memory_detail) = ui::stat_tile("Memory");
+    let (power_tile, power_icon, power_value, _) =
+        ui::stat_tile("POWER SOURCE", "ac-adapter-symbolic");
+    let (profile_tile, _, profile_value, profile_detail) =
+        ui::stat_tile("PROFILE", "power-profile-performance-symbolic");
+    let (backend_tile, _, backend_value, _) =
+        ui::stat_tile("BACKEND", "utilities-terminal-symbolic");
+    let (memory_tile, _, memory_value, memory_detail) =
+        ui::stat_tile("MEMORY", "drive-harddisk-symbolic");
     for tile in [&power_tile, &profile_tile, &backend_tile, &memory_tile] {
         grid.insert(tile, -1);
         if let Some(child) = tile.parent() {
             child.set_focusable(false);
         }
     }
-    content.append(&grid);
+    content.append(&section("SYSTEM STATUS", &grid));
 
-    // Static machine identity, read once (does not change while running).
+    // Machine identity, read once — only used to tell whether a dGPU
+    // exists so the GPU gauge can note when it is asleep.
     let sysinfo = client::request_sysinfo_blocking();
     let has_dgpu = sysinfo.get("gpu_dgpu").is_some_and(|value| value != "none");
-    if let Some(group) = hardware_group(&sysinfo) {
-        content.append(&group);
-    }
 
     poller.subscribe(move |snapshot: &Snapshot| {
         let number = |map: &HashMap<String, String>, key: &str| {
@@ -176,20 +180,45 @@ pub fn page(poller: &Rc<Poller>) -> gtk::Widget {
         }
 
         let status = &snapshot.status;
-        power_value.set_text(match snapshot.telemetry.get("power").map(String::as_str) {
+        let power = snapshot.telemetry.get("power").map(String::as_str);
+        power_value.set_text(match power {
             Some("ac") => "Plugged in",
             Some("battery") => "On battery",
             _ => "—",
         });
-        profile_value.set_text(&status.get("profile").map_or_else(
-            || "—".to_owned(),
-            |name| {
-                let mut chars = name.chars();
-                chars.next().map_or_else(String::new, |first| {
-                    first.to_uppercase().collect::<String>() + chars.as_str()
-                })
+        power_icon.set_icon_name(Some(if power == Some("battery") {
+            "battery-good-symbolic"
+        } else {
+            "ac-adapter-symbolic"
+        }));
+        let (profile_text, profile_levels) = match status.get("profile").map(String::as_str) {
+            None => ("—".to_owned(), None),
+            Some(raw) => match parse_profile(raw) {
+                Some(Profile::Custom { cpu, gpu }) => (
+                    "Custom".to_owned(),
+                    Some(format!("CPU {} · GPU {}", boost_name(cpu), boost_name(gpu))),
+                ),
+                Some(Profile::Silent) => ("Silent".to_owned(), None),
+                Some(Profile::Gaming) => ("Gaming".to_owned(), None),
+                // Balanced, plus any future name the parser knows but this
+                // match does not: capitalise the raw token.
+                _ => {
+                    let mut chars = raw.chars();
+                    let capitalised = chars.next().map_or_else(String::new, |first| {
+                        first.to_uppercase().collect::<String>() + chars.as_str()
+                    });
+                    (capitalised, None)
+                }
             },
-        ));
+        };
+        profile_value.set_text(&profile_text);
+        match profile_levels {
+            Some(levels) => {
+                profile_detail.set_text(&levels);
+                profile_detail.set_visible(true);
+            }
+            None => profile_detail.set_visible(false),
+        }
         backend_value.set_text(match status.get("backend").map(String::as_str) {
             Some("dry-run") => "Dry run",
             Some("hidraw") => "Hardware",
@@ -208,10 +237,10 @@ pub fn page(poller: &Rc<Poller>) -> gtk::Widget {
 fn hero_card(poller: &Rc<Poller>) -> gtk::Widget {
     let portrait = device_portrait().map(gtk::Widget::from);
     let hero = ui::hero(
-        razer_control_secureblue::BLADE_14_2023.name,
+        &razer_control_secureblue::BLADE_14_2023.name.to_uppercase(),
         portrait.as_ref(),
     );
-    hero.subtitle.set_text("USB 1532:029d");
+    hero.subtitle.set_text("1532:029D");
     hero.subtitle.add_css_class("numeric");
 
     let connection = ui::chip("—", ui::ChipKind::Neutral);
@@ -332,7 +361,7 @@ fn gauge_card(name: &str, fill: (u8, u8, u8), track: (u8, u8, u8)) -> GaugeCard 
 
     let detail = gtk::Label::builder()
         .label("—")
-        .css_classes(["caption", "dim-label"])
+        .css_classes(["accent"])
         .build();
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -470,50 +499,29 @@ fn device_portrait() -> Option<gtk::DrawingArea> {
     Some(area)
 }
 
-fn hardware_group(sysinfo: &HashMap<String, String>) -> Option<adw::PreferencesGroup> {
-    let get = |key: &str| {
-        sysinfo
-            .get(key)
-            .map(String::as_str)
-            .filter(|value| *value != "none")
-    };
-    let cpu = get("cpu_model")?;
-    let group = adw::PreferencesGroup::builder().title("Hardware").build();
+/// Human name for a custom-profile power level.
+fn boost_name(level: BoostLevel) -> &'static str {
+    match level {
+        BoostLevel::Low => "Low",
+        BoostLevel::Medium => "Medium",
+        BoostLevel::High => "High",
+        BoostLevel::Boost => "Boost",
+    }
+}
 
-    let subtitle = match (get("cpu_cores"), get("cpu_threads")) {
-        (Some(cores), Some(threads)) => format!("{cores} cores, {threads} threads"),
-        _ => String::new(),
-    };
-    let cpu_row = adw::ActionRow::builder()
-        .title("Processor")
-        .subtitle(cpu)
+/// A titled section: an uppercase heading above the given content.
+/// Unlike the green `AdwPreferencesGroup` titles on the control pages,
+/// these stay in the default (white) foreground — see style.css.
+fn section(title: &str, child: &impl IsA<gtk::Widget>) -> gtk::Box {
+    let heading = gtk::Label::builder()
+        .label(title)
+        .css_classes(["heading", "section-heading"])
+        .halign(gtk::Align::Start)
         .build();
-    if !subtitle.is_empty() {
-        let detail = gtk::Label::builder()
-            .label(&subtitle)
-            .css_classes(["dim-label"])
-            .build();
-        cpu_row.add_suffix(&detail);
-    }
-    group.add(&cpu_row);
-
-    if let Some(dgpu) = get("gpu_dgpu") {
-        group.add(
-            &adw::ActionRow::builder()
-                .title("Dedicated GPU")
-                .subtitle(dgpu)
-                .build(),
-        );
-    }
-    if let Some(igpu) = get("gpu_igpu") {
-        group.add(
-            &adw::ActionRow::builder()
-                .title("Integrated GPU")
-                .subtitle(igpu)
-                .build(),
-        );
-    }
-    Some(group)
+    let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    section.append(&heading);
+    section.append(child);
+    section
 }
 
 /// Wrap page content in a clamp + scroll.  Wider than the standard
