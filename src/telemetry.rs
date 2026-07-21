@@ -527,7 +527,7 @@ fn cpu_cores() -> Option<u32> {
                 .filter(|(k, _)| k.trim() == "cpu cores")
         })
         .and_then(|(_, v)| v.trim().parse().ok())
-        .or_else(|| cpu_threads())
+        .or_else(cpu_threads)
 }
 
 #[cfg(target_os = "linux")]
@@ -650,12 +650,7 @@ mod tests {
 
     #[test]
     fn cpu_utilisation_is_a_delta_between_reads() {
-        let mut reader = TelemetryReader::default();
-        // First read has no prior snapshot, so no utilisation figure.
-        reader.last_cpu = Some(CpuTimes {
-            total: 1000,
-            idle: 800,
-        });
+        // Prior snapshot: 1000 total jiffies, 800 idle.
         // 100 more total jiffies, 25 of them idle -> 75% busy.
         let now = CpuTimes {
             total: 1100,

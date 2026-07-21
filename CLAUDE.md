@@ -11,6 +11,7 @@ License is **GPL-2.0-only** because `src/protocol.rs` is derived from GPL upstre
 ## Common commands
 
 ```bash
+./scripts/check.sh                                                       # fmt + clippy + both test invocations (the full local gate)
 cargo test --locked --workspace                                          # all crates (default = dry-run only)
 cargo test --locked -p razer-control-secureblue --features hidraw-backend # core incl. the real backend
 cargo test <name>                                                        # single test by name substring
@@ -21,7 +22,7 @@ cargo run -- validate profile gaming --experimental                      # exper
 RAZER_CONTROL_MOCK=1 cargo run -p razer-control-desktop                  # GUI against in-process mock daemon
 ```
 
-CI (`.github/workflows/ci.yml`) runs the two test invocations above plus `cargo fmt --check`, then in a separate Fedora job builds and installs the RPM and asserts the on-disk layout (no world-writable udev node, units in the right paths). Match that before assuming a change is green.
+CI (`.github/workflows/ci.yml`) runs the two test invocations above plus `cargo fmt --check` and `cargo clippy … -Dwarnings`, then in a separate Fedora job builds and installs the RPM and asserts the on-disk layout (no world-writable udev node, units in the right paths). `./scripts/check.sh` runs the first four locally in one pass; match it before assuming a change is green. `./scripts/clean.sh` does a safe `cargo clean` (`--deep` adds a confirmed, destructive `git clean -fdx`).
 
 ## Architecture
 
